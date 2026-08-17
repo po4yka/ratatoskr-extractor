@@ -1,1 +1,27 @@
-# Repository-specific ignore rules will be added with implementation scaffolding.
+# Rust / Cargo build output
+target/
+*.rs.bk
+
+# Fuzzing output (cargo-fuzz crash artifacts)
+/fuzz/artifacts/
+
+# Test and coverage output
+*.profraw
+*.profdata
+/coverage/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/secrets/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
