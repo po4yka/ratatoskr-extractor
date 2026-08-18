@@ -296,18 +296,28 @@ Thresholds are configuration tied to a scorer version and calibrated on the gold
 
 ## 10. Document IR
 
-The canonical output is the shared structured document contract.
+The canonical output is the shared structured document contract. Its shape is owned by
+`ratatoskr-contracts` (milestone 5, `docs/ARCHITECTURE.md` section 6.1); the copy below tracks that
+definition and is not an independent one.
 
 ```rust
 pub struct Document {
+    pub document_id: DocumentId,
     pub metadata: DocumentMetadata,
     pub blocks: Vec<Block>,
     pub provenance: Vec<SourceSpan>,
     pub content_hash: String,
-    pub extractor_version: String,
-    pub schema_version: u32,
+    pub document_ir_version: u32,
 }
 ```
+
+The version field is `document_ir_version`, not `schema_version`. In Ratatoskr `schema_version` means
+the envelope major and nothing else, and the contracts field lint rejects that name on any contract
+other than the event envelope.
+
+The identity of the extraction engine is provenance, not document content: it is carried in
+`SourceSpan` with the extraction strategy, per contracts section 6.2. The canonical document must not
+embed extraction-engine implementation details.
 
 IR requirements:
 
