@@ -1,7 +1,7 @@
 # Developing Ratatoskr Extractor
 
 > Status: Proposed  
-> Last reviewed: 2026-08-17
+> Last reviewed: 2026-08-20
 
 The repository is in architecture bootstrap. The extractor, browser worker, parsers, fixtures, and benchmarks are not implemented.
 
@@ -24,3 +24,22 @@ There is no code here yet, so no limit is enforced yet. The commit that brings t
 5. Compare quality, latency, requests, bytes, CPU, memory, and browser escalation against baseline.
 
 The first scaffold PR must document exact build, format, lint, unit, integration, fuzz, corpus, benchmark, browser, and migration commands. LLM credentials must never be needed because LLM interpretation is outside this repository.
+
+## What a clone needs before you plan a change
+
+A change is planned with OpenSpec, which is a CLI a clone installs for itself. Use the version
+`.github/workflows/openspec.yml` pins, so your terminal and the gate answer the same:
+
+```bash
+npm install --global @fission-ai/openspec@1.10.0
+```
+
+Cross-repository behaviour lives in a store, and registering one is per-machine state that no
+repository can turn on for you — the same kind of step as `git config core.hooksPath .githooks`:
+
+```bash
+git clone git@github.com:po4yka/ratatoskr-workspace.git <path>
+openspec store register <path> --id ratatoskr-workspace
+```
+
+`openspec doctor` reports whether both are in place.
