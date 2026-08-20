@@ -9,6 +9,12 @@ The repository is in architecture bootstrap. The extractor, browser worker, pars
 
 Rust/Tokio, Reqwest/Rustls, html5ever/scraper, PDF adapters, bounded CPU work, SQLx/PostgreSQL, BlobStore, Chromium behind a `BrowserRenderer`, tracing, testcontainers, fuzz/property tests, and benchmark tooling.
 
+## Code size limits
+
+There is no code here yet, so no limit is enforced yet. The commit that brings the first manifest brings the configuration that carries the limits with it: `clippy.toml` beside a `Cargo.toml`, `eslint.config.js` beside a `package.json`. `fleet.yml` fails the gate when a manifest arrives without one, so the rule has a check behind it and not only this paragraph.
+
+`ratatoskr-workspace/docs/QUALITY_GATES.md` holds the numbers the repositories with code use today, the command that measured each one, and the limits that were rejected with the reason. Read it before you choose numbers, then measure this tree. Each limit is set at the worst case the tree already has, so that the check fails on a regression and not on work that has not been done yet.
+
 ## Workflow
 
 1. Classify the source and preserve the original URL.
