@@ -1,12 +1,23 @@
 # Ratatoskr Extractor
 
-`ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr Next. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
+`ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
 > **Status:** architecture bootstrap. The extraction engine, browser worker, Document IR, and benchmark corpus described below are planned and are not implemented yet.
 
-## Role in Ratatoskr Next
+> [!IMPORTANT]
+> **Ratatoskr is in development.** No database holds data that has to survive a schema change.
+> While this status holds, these two rules replace what the documents below plan:
+>
+> - the API and the database keep their first version. There is no `v2` and no later major
+>   version.
+> - the database has no migrations. One schema definition exists, and a schema change edits it in
+>   place.
+>
+> Only the repository owner changes this status.
 
-The current Ratatoskr backend relies on a long fallback chain of overlapping HTTP, browser, sidecar, and LLM-driven scraper frameworks. Ratatoskr Next replaces that topology with one owned extraction pipeline and a separate, isolated Chromium process.
+## Role in Ratatoskr
+
+The legacy backend relies on a long fallback chain of overlapping HTTP, browser, sidecar, and LLM-driven scraper frameworks. Ratatoskr replaces that topology with one owned extraction pipeline and a separate, isolated Chromium process.
 
 This repository is expected to provide two deployables:
 
