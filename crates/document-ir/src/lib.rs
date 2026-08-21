@@ -13,6 +13,36 @@ use sha2::{Digest as _, Sha256};
 
 use crate::dom::{Element, HtmlDom};
 
+/// Fixed-point components recorded for one quality decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QualityMetrics {
+    /// Normalized candidate characters.
+    pub text_characters: u32,
+    /// Paragraph blocks in the candidate.
+    pub paragraph_count: u16,
+    /// Text-volume contribution, at most 300.
+    pub text_volume: u16,
+    /// Paragraph-distribution contribution, at most 200.
+    pub paragraph_distribution: u16,
+    /// Non-link-text contribution, at most 200.
+    pub non_link_share: u16,
+    /// Non-boilerplate-text contribution, at most 200.
+    pub non_boilerplate_share: u16,
+    /// Title-agreement contribution, at most 100.
+    pub title_agreement: u16,
+}
+
+/// Stable explanation attached to one quality score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityReason {
+    /// Candidate meets the current acceptance thresholds.
+    Accepted,
+    /// Candidate does not contain the minimum normalized text.
+    TooShort,
+    /// Candidate score is below the current threshold.
+    BelowThreshold,
+}
+
 /// One named in-memory candidate produced from the shared DOM.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CandidateDecision {
@@ -20,6 +50,18 @@ pub struct CandidateDecision {
     pub strategy: String,
     /// Ordered blocks proposed by the strategy.
     pub blocks: Vec<DocumentBlock>,
+    /// Stable evaluator implementation version.
+    pub evaluator_version: &'static str,
+    /// Bounded fixed-point quality components.
+    pub metrics: QualityMetrics,
+    /// Total score from 0 through 1000.
+    pub score: u16,
+    /// Whether this candidate meets both acceptance thresholds.
+    pub accepted: bool,
+    /// Stable bounded decision reasons.
+    pub reasons: Vec<QualityReason>,
+    /// Whether this candidate supplied the output Document IR.
+    pub selected: bool,
 }
 
 /// Selected Document IR plus every candidate considered from the same DOM.
@@ -101,11 +143,26 @@ pub fn from_html(
     }
 
     let candidates = candidate::extract(&dom);
+    let mut decisions = candidates
+        .iter()
+        .map(|candidate| evaluate(candidate, title.as_deref()))
+        .collect::<Vec<_>>();
+    let selected_strategy = winner(&decisions, true)
+        .or_else(|| winner(&decisions, false))
+        .and_then(|decision| {
+            candidates
+                .iter()
+                .find(|candidate| candidate.strategy.as_str() == decision.strategy)
+        })
+        .map(|candidate| candidate.strategy)
+        .ok_or(DocumentIrError::InvalidIdentity)?;
     let selected = candidates
         .iter()
-        .find(|candidate| !candidate.blocks.is_empty())
-        .or_else(|| candidates.get(1))
+        .find(|candidate| candidate.strategy == selected_strategy)
         .ok_or(DocumentIrError::InvalidIdentity)?;
+    for decision in &mut decisions {
+        decision.selected = decision.strategy == selected_strategy.as_str();
+    }
     let blocks = selected.blocks.clone();
 
     let canonical = ratatoskr_identifiers::canonical_json(&blocks)?;
@@ -136,13 +193,91 @@ pub fn from_html(
             blocks,
             provenance,
         },
-        candidates: candidates
-            .into_iter()
-            .map(|candidate| CandidateDecision {
-                strategy: candidate.strategy.as_str().to_owned(),
-                blocks: candidate.blocks,
-            })
-            .collect(),
+        candidates: decisions,
+    })
+}
+
+fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateDecision {
+    let text_characters = candidate.blocks.iter().map(block_text_len).sum::<usize>();
+    let paragraph_count = candidate
+        .blocks
+        .iter()
+        .filter(|block| matches!(block, DocumentBlock::Paragraph { .. }))
+        .count();
+    let metrics = QualityMetrics {
+        text_characters: u32::try_from(text_characters).unwrap_or(u32::MAX),
+        paragraph_count: u16::try_from(paragraph_count).unwrap_or(u16::MAX),
+        text_volume: component(text_characters, 600, 300),
+        paragraph_distribution: component(paragraph_count, 4, 200),
+        non_link_share: share(text_characters, candidate.link_characters, 200),
+        non_boilerplate_share: share(text_characters, candidate.boilerplate_characters, 200),
+        title_agreement: u16::from(title_matches(&candidate.blocks, title)) * 100,
+    };
+    let score = metrics
+        .text_volume
+        .saturating_add(metrics.paragraph_distribution)
+        .saturating_add(metrics.non_link_share)
+        .saturating_add(metrics.non_boilerplate_share)
+        .saturating_add(metrics.title_agreement);
+    let accepted = text_characters >= 120 && score >= 350;
+    let reasons = if accepted {
+        vec![QualityReason::Accepted]
+    } else {
+        let mut reasons = Vec::with_capacity(2);
+        if text_characters < 120 {
+            reasons.push(QualityReason::TooShort);
+        }
+        if score < 350 {
+            reasons.push(QualityReason::BelowThreshold);
+        }
+        reasons
+    };
+    CandidateDecision {
+        strategy: candidate.strategy.as_str().to_owned(),
+        blocks: candidate.blocks.clone(),
+        evaluator_version: "quality_v1",
+        metrics,
+        score,
+        accepted,
+        reasons,
+        selected: false,
+    }
+}
+
+fn winner(decisions: &[CandidateDecision], accepted_only: bool) -> Option<&CandidateDecision> {
+    decisions
+        .iter()
+        .filter(|decision| !accepted_only || decision.accepted)
+        .fold(None, |best: Option<&CandidateDecision>, decision| {
+            if best.is_none_or(|best| decision.score > best.score) {
+                Some(decision)
+            } else {
+                best
+            }
+        })
+}
+
+fn component(value: usize, full_value: usize, weight: u16) -> u16 {
+    let weighted = value.min(full_value).saturating_mul(usize::from(weight)) / full_value;
+    u16::try_from(weighted).unwrap_or(weight)
+}
+
+fn share(total: usize, excluded: usize, weight: u16) -> u16 {
+    if total == 0 {
+        return 0;
+    }
+    let weighted = total
+        .saturating_sub(excluded.min(total))
+        .saturating_mul(usize::from(weight))
+        / total;
+    u16::try_from(weighted).unwrap_or(weight)
+}
+
+fn title_matches(blocks: &[DocumentBlock], title: Option<&str>) -> bool {
+    title.is_some_and(|title| {
+        blocks.iter().any(|block| {
+            matches!(block, DocumentBlock::Heading { text, .. } if text.eq_ignore_ascii_case(title))
+        })
     })
 }
 

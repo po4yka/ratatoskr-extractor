@@ -5,8 +5,8 @@
 
 ## 2. Deterministic quality
 
-- [ ] 2.1 Add failing test `crates/document-ir/tests/quality.rs::evaluation_is_repeatable_with_stable_ties`; evaluate one candidate set repeatedly and assert exact component totals, reasons, acceptance, and semantic-first tie selection. Run it and confirm the scaffold decisions differ from the expected fixed-point values.
-- [ ] 2.2 Implement the fixed-point component formula, acceptance thresholds, evaluator version, bounded reasons, and stable tie order; make 2.1 pass, run document-ir format and Clippy gates, and commit this TDD pair on `main`.
+- [x] 2.1 Add failing test `crates/document-ir/tests/quality.rs::evaluation_is_repeatable_with_stable_ties`; evaluate one candidate set repeatedly and assert exact component totals, reasons, acceptance, and semantic-first tie selection. Run it and confirm the scaffold decisions differ from the expected fixed-point values.
+- [x] 2.2 Implement the fixed-point component formula, acceptance thresholds, evaluator version, bounded reasons, and stable tie order; make 2.1 pass, run document-ir format and Clippy gates, and commit this TDD pair on `main`.
 - [ ] 2.3 Add failing test `crates/document-ir/tests/quality.rs::login_shell_is_rejected`; assert a short login and consent page returns the bounded low-quality error rather than Document IR. Run it and confirm the current conversion succeeds.
 - [ ] 2.4 Refuse extraction when no candidate meets both thresholds, make 2.3 pass, run document-ir format and Clippy gates, and commit this TDD pair on `main`.
 
