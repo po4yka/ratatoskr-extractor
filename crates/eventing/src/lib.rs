@@ -4,11 +4,13 @@
 
 mod consumer;
 mod outbox;
+mod terminal;
 
 pub use consumer::{ConsumerReport, run_command_consumer};
 pub use outbox::{NatsPublisher, OutboxReport, PublishError, Publisher, run_outbox_once};
 
 use extractor_blob_store::{BlobStore, BlobStoreError};
+use extractor_document_ir::CandidateDecision;
 use extractor_url_routing::{RoutingPolicy, SourceRoute, classify, normalize};
 use ratatoskr_document_contracts::Document;
 use ratatoskr_error_contracts::{ErrorCode, ErrorEnvelope};
@@ -380,6 +382,7 @@ pub async fn complete_document(
     document: &Document,
     ir_blob: &BlobRef,
     fetch: &CompletedFetch<'_>,
+    candidates: &[CandidateDecision],
 ) -> Result<Completion, ConsumeError> {
     if ir_blob.owner_service.as_str() != PRODUCER
         || fetch.raw_blob.owner_service.as_str() != PRODUCER
@@ -397,10 +400,7 @@ pub async fn complete_document(
     let length = i64::try_from(ir_blob.length_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
     let raw_length =
         i64::try_from(fetch.raw_blob.length_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
-    let wire_bytes = i64::try_from(fetch.wire_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
-    let decoded_bytes =
-        i64::try_from(fetch.decoded_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
-    let attempts = i32::try_from(fetch.attempts).map_err(|_| ConsumeError::InvalidArtifact)?;
+    terminal::validate_candidates(candidates, 1)?;
     let mut transaction = pool.begin().await?;
     let context = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, uuid::Uuid, String)>(
         "update extractor.extraction_runs
@@ -434,26 +434,7 @@ pub async fn complete_document(
         };
     };
 
-    sqlx::query(
-        "insert into extractor.fetches
-             (fetch_id, run_id, final_url, http_status, media_type, wire_bytes, decoded_bytes,
-              attempts, cache_outcome, etag, last_modified, fetched_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                 transaction_timestamp())",
-    )
-    .bind(uuid::Uuid::now_v7())
-    .bind(run_id)
-    .bind(fetch.final_url)
-    .bind(i32::from(fetch.http_status))
-    .bind(fetch.media_type)
-    .bind(wire_bytes)
-    .bind(decoded_bytes)
-    .bind(attempts)
-    .bind(fetch.cache_outcome)
-    .bind(fetch.etag)
-    .bind(fetch.last_modified)
-    .execute(&mut *transaction)
-    .await?;
+    terminal::insert_fetch(&mut transaction, run_id, fetch).await?;
 
     insert_artifact(
         &mut transaction,
@@ -466,7 +447,68 @@ pub async fn complete_document(
 
     insert_artifact(&mut transaction, run_id, "document_ir", ir_blob, length).await?;
 
+    terminal::insert_candidates(&mut transaction, run_id, candidates).await?;
     enqueue_completion_events(&mut transaction, &context, document, ir_blob).await?;
+    transaction.commit().await?;
+    Ok(Completion::Applied)
+}
+
+/// Records a bounded quality failure.
+///
+/// # Errors
+///
+/// Returns [`ConsumeError`] when terminal persistence fails.
+pub async fn reject_quality(
+    pool: &PgPool,
+    run_id: uuid::Uuid,
+    fetch: &CompletedFetch<'_>,
+    candidates: &[CandidateDecision],
+) -> Result<Completion, ConsumeError> {
+    if fetch.raw_blob.owner_service.as_str() != PRODUCER
+        || !matches!(
+            fetch.raw_blob.digest.algorithm,
+            ratatoskr_identifiers::DigestAlgorithm::Sha256
+        )
+    {
+        return Err(ConsumeError::InvalidArtifact);
+    }
+    terminal::validate_candidates(candidates, 0)?;
+    let raw_length =
+        i64::try_from(fetch.raw_blob.length_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
+    let mut transaction = pool.begin().await?;
+    let context = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, uuid::Uuid, String)>(
+        "update extractor.extraction_runs
+            set status = 'failed', completed_at = transaction_timestamp(),
+                last_error_class = 'quality', claimed_until = null, claimed_by = null
+          where run_id = $1 and status = 'running'
+          returning command_id, operation_id, owner_id, correlation_id",
+    )
+    .bind(run_id)
+    .fetch_optional(&mut *transaction)
+    .await?
+    .map(
+        |(command_id, operation_id, owner_id, correlation_id)| CompletionContext {
+            command: command_id,
+            operation: operation_id,
+            owner: owner_id,
+            correlation: correlation_id,
+        },
+    );
+    let Some(context) = context else {
+        transaction.commit().await?;
+        return Ok(Completion::Duplicate);
+    };
+    terminal::insert_fetch(&mut transaction, run_id, fetch).await?;
+    insert_artifact(
+        &mut transaction,
+        run_id,
+        "raw_source",
+        fetch.raw_blob,
+        raw_length,
+    )
+    .await?;
+    terminal::insert_candidates(&mut transaction, run_id, candidates).await?;
+    enqueue_failed_report(&mut transaction, &context, false).await?;
     transaction.commit().await?;
     Ok(Completion::Applied)
 }

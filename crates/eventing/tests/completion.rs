@@ -1,6 +1,7 @@
 //! Atomic successful extraction completion.
 
 use extractor_blob_store::BlobStore;
+use extractor_document_ir::{CandidateDecision, QualityMetrics, QualityReason};
 use extractor_eventing::{
     CompletedFetch, Completion, complete_document, consume_capture, store_document_ir,
 };
@@ -64,6 +65,7 @@ async fn completed_document_and_report_commit_with_one_run()
         last_modified: None,
         raw_blob: &source,
     };
+    let candidates = candidate_decisions();
 
     assert_eq!(
         complete_document(
@@ -71,7 +73,8 @@ async fn completed_document_and_report_commit_with_one_run()
             run_id,
             &document,
             &ir_blob,
-            &fetch
+            &fetch,
+            &candidates
         )
         .await?,
         Completion::Applied
@@ -82,7 +85,8 @@ async fn completed_document_and_report_commit_with_one_run()
             run_id,
             &document,
             &ir_blob,
-            &fetch
+            &fetch,
+            &candidates
         )
         .await?,
         Completion::Duplicate
@@ -99,6 +103,30 @@ async fn completed_document_and_report_commit_with_one_run()
 
     database.cleanup().await?;
     Ok(())
+}
+
+fn candidate_decisions() -> Vec<CandidateDecision> {
+    ["semantic", "readability", "density"]
+        .into_iter()
+        .map(|strategy| CandidateDecision {
+            strategy: strategy.to_owned(),
+            blocks: Vec::new(),
+            metrics: QualityMetrics {
+                text_characters: 120,
+                paragraph_count: 2,
+                text_volume: 100,
+                paragraph_distribution: 100,
+                non_link_share: 200,
+                non_boilerplate_share: 200,
+                title_agreement: 100,
+            },
+            score: 700,
+            evaluator_version: "quality_v1",
+            reasons: vec![QualityReason::Accepted],
+            accepted: true,
+            selected: strategy == "semantic",
+        })
+        .collect()
 }
 
 async fn verify_completion(

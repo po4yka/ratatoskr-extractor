@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use extractor_blob_store::BlobStore;
 use extractor_core::{ExtractorConfig, ParserConfig};
-use extractor_document_ir::{HtmlDocumentInput, ParseLimits, from_html};
+use extractor_document_ir::{DocumentIrError, HtmlDocumentInput, ParseLimits, from_html};
 use extractor_eventing::{
-    CompletedFetch, NatsPublisher, claim_queued_run, complete_document, fail_run,
+    CompletedFetch, NatsPublisher, claim_queued_run, complete_document, fail_run, reject_quality,
     run_command_consumer, run_outbox_once, store_document_ir,
 };
 use extractor_persistence::Database;
@@ -331,8 +331,14 @@ async fn process_run(
     .await?;
     metrics::histogram!("ratatoskr_extractor_parse_duration_seconds")
         .record(parse_started.elapsed().as_secs_f64());
-    let document = match document {
-        Ok(extraction) => extraction.document,
+    let extraction = match document {
+        Ok(extraction) => extraction,
+        Err(DocumentIrError::LowQuality { candidates }) => {
+            let fetch = completed_fetch(&fetched);
+            reject_quality(pool, run.run_id, &fetch, &candidates).await?;
+            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
+            return Ok(());
+        }
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "Document IR conversion failed");
             fail_run(pool, run.run_id, "parse", false).await?;
@@ -340,9 +346,17 @@ async fn process_run(
             return Ok(());
         }
     };
-    let ir_blob = store_document_ir(store, &document).await?;
+    let ir_blob = store_document_ir(store, &extraction.document).await?;
     let fetch = completed_fetch(&fetched);
-    complete_document(pool, run.run_id, &document, &ir_blob, &fetch).await?;
+    complete_document(
+        pool,
+        run.run_id,
+        &extraction.document,
+        &ir_blob,
+        &fetch,
+        &extraction.candidates,
+    )
+    .await?;
     metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
     Ok(())
 }

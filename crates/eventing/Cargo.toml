@@ -15,6 +15,7 @@ path = "src/lib.rs"
 ratatoskr-document-contracts.workspace = true
 ratatoskr-error-contracts.workspace = true
 ratatoskr-extractor-blob-store.workspace = true
+ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-event-envelope.workspace = true
 ratatoskr-identifiers.workspace = true
 ratatoskr-operation-contracts.workspace = true
