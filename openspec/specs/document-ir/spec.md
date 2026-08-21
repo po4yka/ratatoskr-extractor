@@ -24,12 +24,14 @@ digest over the contracts repository's canonical JSON rendering of the ordered b
 - **WHEN** input size or parsed node count exceeds its configured finite limit
 - **THEN** parsing fails before any Document IR or derived artifact is published
 
-### Requirement: Item 4 does not implement candidate scoring
+### Requirement: One parsed DOM feeds every HTML candidate
 
-The primitive HTML conversion SHALL use one fixed named strategy and SHALL NOT create competing
-candidates, scores, quality thresholds, or browser escalation decisions.
+Extractor SHALL parse verified HTML bytes once and SHALL build every extraction candidate from that
+same bounded DOM. Only the selected candidate SHALL become shared Document IR, and its provenance
+SHALL name the selected strategy.
 
-#### Scenario: one DOM is not raced through speculative extractors
+#### Scenario: candidate selection preserves parse-once behavior
 
-- **WHEN** HTML is converted during plan item 4
-- **THEN** one parser invocation produces the primitive blocks without another network request or DOM
+- **WHEN** semantic, readability-compatible, and text-density candidates are evaluated
+- **THEN** one parser invocation produces the DOM and the selected Document IR names the winning
+  strategy in every block provenance entry
