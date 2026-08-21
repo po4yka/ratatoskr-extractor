@@ -41,14 +41,14 @@ fn evaluation_is_repeatable_with_stable_ties() -> Result<(), Box<dyn std::error:
             QualityMetrics {
                 text_characters: 132,
                 paragraph_count: 1,
-                text_volume: 66,
+                text_volume: 132,
                 paragraph_distribution: 50,
                 non_link_share: 200,
                 non_boilerplate_share: 200,
                 title_agreement: 100,
             }
         );
-        assert_eq!(candidate.score, 616);
+        assert_eq!(candidate.score, 682);
         assert!(candidate.accepted);
         assert_eq!(candidate.reasons, [QualityReason::Accepted]);
     }

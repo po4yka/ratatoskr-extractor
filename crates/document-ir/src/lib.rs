@@ -216,7 +216,7 @@ fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateD
     let metrics = QualityMetrics {
         text_characters: u32::try_from(text_characters).unwrap_or(u32::MAX),
         paragraph_count: u16::try_from(paragraph_count).unwrap_or(u16::MAX),
-        text_volume: component(text_characters, 600, 300),
+        text_volume: component(text_characters, 300, 300),
         paragraph_distribution: component(paragraph_count, 4, 200),
         non_link_share: share(text_characters, candidate.link_characters, 200),
         non_boilerplate_share: share(text_characters, candidate.boilerplate_characters, 200),
