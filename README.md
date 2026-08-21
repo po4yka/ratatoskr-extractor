@@ -2,9 +2,9 @@
 
 `ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
-> **Status:** implementation plan items 1 through 4 and 6 are complete: foundation, URL/SSRF
-> policy, bounded retrieval, primitive parse-once Document IR, and the durable PostgreSQL/JetStream
-> pipeline. Candidate scoring, PDFs, and the browser worker remain planned.
+> **Status:** implementation plan items 1 through 6 are complete: foundation, URL/SSRF policy,
+> bounded retrieval, parse-once HTML candidates, deterministic quality selection, Document IR, and
+> the durable PostgreSQL/JetStream pipeline. PDFs and the browser worker remain planned.
 
 > [!IMPORTANT]
 > **Ratatoskr is in development.** No database holds data that has to survive a schema change.
@@ -38,7 +38,7 @@ crates/telemetry     structured tracing and Prometheus recording
 crates/url-routing   URL identity, source classification, and SSRF-safe DNS
 crates/blob-store    extractor-owned content-addressed artifacts and BlobRef verification
 crates/safe-fetch    pooled HTTP, redirects, limits, decoding, cache validation, and retry
-crates/document-ir   bounded HTML5 parse-once conversion to the shared Document contract
+crates/document-ir   bounded HTML5 parse-once candidates, quality selection, and shared Document IR
 crates/persistence   finite PostgreSQL pool and the one editable extractor schema
 crates/eventing      typed command inbox, leased worker records, outbox, and JetStream ACKs
 crates/test-support  deterministic local network and storage fixtures
@@ -102,16 +102,15 @@ Raw response metadata and body hashes are retained as provenance. Sensitive URL 
 ## Parse once, extract many
 
 HTML is parsed once using an HTML5 parser. Item 4 emits headings and paragraphs with block-level
-raw-blob provenance. Item 5 will add deterministic candidates over that same DOM:
+raw-blob provenance. Item 5 runs three deterministic candidates over that same DOM:
 
-- Readability-compatible extraction;
 - semantic `<article>` and `<main>` extraction;
+- Readability-compatible extraction;
 - text-density extraction;
-- JSON-LD `articleBody` extraction;
-- source- or publisher-specific selectors;
-- metadata and canonical-link extraction.
 
-A candidate contains its blocks, metadata, diagnostics, and evidence. It does not become the accepted document until it passes shared quality gates.
+Each candidate records bounded evidence and integer score components. The highest accepted score
+wins; ties prefer semantic, readability, then density. JSON-LD and source-specific strategies remain
+deferred.
 
 ## Canonical Document IR
 
@@ -138,28 +137,26 @@ Provider-specific information that cannot yet be represented remains available t
 
 ## Quality scoring
 
-Acceptance is driven by deterministic, explainable signals rather than "first provider to return text". Candidate scoring may include:
+Acceptance is driven by deterministic, explainable signals rather than "first provider to return
+text". Evaluator `quality_v1` assigns up to 1000 points from:
 
-- character, word, paragraph, and sentence counts;
-- text-to-DOM ratio;
-- link and boilerplate density;
-- duplicate and navigation block ratios;
-- title/body consistency;
-- author and publication metadata;
-- error, tombstone, login, consent, and paywall markers;
-- suspicious truncation or incomplete endings;
-- JSON-LD/DOM agreement;
-- language and structural consistency.
+- text volume (300);
+- paragraph distribution (200);
+- non-link share (200);
+- non-boilerplate share (200);
+- title/body agreement (100).
+
+Acceptance requires at least 120 normalized characters and a score of at least 350. Every terminal
+transaction stores all three decisions and exactly one selected marker on success; a low-quality
+failure stores three unselected decisions and no Document IR event.
 
 An extraction result records the selected strategy and score explanation, for example:
 
 ```text
-extractor = readability
-score = 0.87
-words = 1842
-link_density = 0.03
-boilerplate_ratio = 0.08
-browser_used = false
+strategy = semantic
+score = 0.68
+text_characters = 132
+reasons = ["accepted"]
 ```
 
 Thresholds are calibrated against a golden corpus, not treated as permanent magic constants.
@@ -248,7 +245,8 @@ Attempt-level diagnostics must support comparison with the legacy pipeline durin
 
 ## Golden corpus and migration
 
-Before cutover, the repository will maintain a representative corpus covering:
+Item 5 includes four minimized synthetic calibration fixtures: semantic, noisy, malformed, and
+login HTML. Plan item 9 will expand this to a representative corpus covering:
 
 - static and malformed HTML;
 - JavaScript applications;
@@ -284,7 +282,7 @@ The legacy and Rust pipelines will run in shadow mode. Evaluation compares compl
 
 ## Initial milestones
 
-1. Establish contracts, service skeleton, configuration, and migrations.
+1. Establish contracts, service skeleton, configuration, and the editable schema.
 2. Implement URL normalization and SSRF-safe HTTP fetching.
 3. Add HTML5 parsing and the first extraction candidates.
 4. Define and persist Document IR.
@@ -299,4 +297,6 @@ The legacy and Rust pipelines will run in shadow mode. Evaluation compares compl
 
 ## Project status
 
-This README defines the intended extraction bounded context. No production engine, browser worker, parser, or benchmark suite is present yet.
+The ordinary HTML service path, parser, deterministic evaluator, and small calibration corpus are
+implemented. PDFs, the isolated browser worker, and broad corpus/performance reporting remain
+planned.
