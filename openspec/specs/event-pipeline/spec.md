@@ -1,6 +1,11 @@
 # Durable extraction event pipeline
 
-## ADDED Requirements
+## Purpose
+
+Defines durable command intake, extractor-owned execution state, and acknowledged event publication
+that remain safe across redelivery, retry, and process restart.
+
+## Requirements
 
 ### Requirement: Commands become durable owned work exactly once
 

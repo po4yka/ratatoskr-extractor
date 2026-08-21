@@ -1,6 +1,11 @@
 # HTML parse-once Document IR
 
-## ADDED Requirements
+## Purpose
+
+Defines bounded parse-once conversion from verified HTML into deterministic shared Document IR with
+ordered content and source-blob provenance.
+
+## Requirements
 
 ### Requirement: One bounded DOM produces deterministic shared Document IR
 
