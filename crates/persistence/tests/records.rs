@@ -42,6 +42,7 @@ async fn run_artifacts_and_candidates_are_owner_scoped_and_idempotent()
         metrics: &metrics,
         score: None,
         reasons: &[],
+        selected: false,
         artifact_id: None,
     };
 
@@ -102,6 +103,54 @@ async fn run_artifacts_and_candidates_are_owner_scoped_and_idempotent()
     }
     assert_eq!(owner, "ratatoskr-extractor");
     assert_eq!(forbidden, 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn one_selected_candidate_is_enforced_per_run() -> Result<(), Box<dyn std::error::Error>> {
+    let database = extractor_persistence::test_support::TestDatabase::create().await?;
+    let (run_id, owner_id) = seed_run(database.database.pool()).await?;
+    let metrics = serde_json::Map::new();
+    let semantic = CandidateRecord {
+        run_id,
+        owner_id,
+        strategy: "semantic",
+        extractor_version: "quality-v1",
+        metrics: &metrics,
+        score: Some(0.8),
+        reasons: &[],
+        selected: true,
+        artifact_id: None,
+    };
+    record_candidate(database.database.pool(), &semantic).await?;
+    record_candidate(database.database.pool(), &semantic).await?;
+
+    let stored: bool = sqlx::query_scalar(
+        "select selected from extractor.candidates
+          where run_id = $1 and strategy = 'semantic'",
+    )
+    .bind(run_id)
+    .fetch_one(database.database.pool())
+    .await?;
+    let readability = CandidateRecord {
+        strategy: "readability",
+        ..semantic
+    };
+    let second_selected_is_rejected = record_candidate(database.database.pool(), &readability)
+        .await
+        .is_err();
+    let counts: (i64, i64) = sqlx::query_as(
+        "select count(*), count(*) filter (where selected)
+           from extractor.candidates where run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(database.database.pool())
+    .await?;
+
+    database.cleanup().await?;
+    assert!(stored);
+    assert!(second_selected_is_rejected);
+    assert_eq!(counts, (1, 1));
     Ok(())
 }
 

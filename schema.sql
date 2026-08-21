@@ -103,6 +103,7 @@ create table extractor.candidates (
     metrics           jsonb       not null,
     score             double precision,
     reasons           jsonb       not null,
+    selected          boolean     not null,
     artifact_id       uuid        references extractor.artifacts (artifact_id),
     created_at        timestamptz not null,
     constraint candidate_strategy_is_bounded check (length(strategy) between 1 and 64),
@@ -111,6 +112,8 @@ create table extractor.candidates (
     constraint candidate_score_is_unit_interval check (score is null or score between 0.0 and 1.0),
     unique (run_id, strategy, extractor_version)
 );
+
+create unique index candidates_one_selected_per_run_idx on extractor.candidates (run_id) where selected;
 
 create table extractor.outbox_events (
     outbox_id             uuid        primary key,
