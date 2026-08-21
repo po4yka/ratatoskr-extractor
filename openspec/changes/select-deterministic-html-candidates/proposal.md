@@ -9,7 +9,7 @@ deterministic decision before Knowledge starts to consume documents.
 - Run semantic, readability-compatible, and text-density candidate extraction against one parsed DOM.
 - Calculate bounded integer quality components, a total score, an acceptance decision, and a stable
   tie-break without network, time, or random inputs.
-- Persist every candidate and the selected marker through the owned candidate records.
+- Persist every candidate, the selected marker, terminal state, and outbox messages atomically.
 - Add a small synthetic calibration corpus for article, boilerplate-heavy, malformed, and low-quality
   HTML, and mark Extractor implementation-plan item 5 complete.
 - Keep PDF extraction, browser escalation, broad fuzzing, and performance reporting outside this

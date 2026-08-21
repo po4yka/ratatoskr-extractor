@@ -43,12 +43,21 @@ classification and SHALL NOT publish a successful document event.
 ### Requirement: Candidate decisions are durable
 
 Extractor SHALL persist each candidate strategy, evaluator version, bounded metrics, score, reasons,
-and selected marker under the owning extraction run before completion is reported.
+and selected marker under the owning extraction run. Candidate facts, terminal run state, owned
+artifacts, and outgoing operation/document messages SHALL commit in one transaction. A quality
+rejection SHALL commit every candidate fact, the failed run state, raw artifact, and failed operation
+report together without a selected candidate, Document IR artifact, or document event.
 
 #### Scenario: a completed extraction is inspected
 
 - **WHEN** an extraction selects one of several acceptable candidates
 - **THEN** its owned records identify every evaluated candidate and exactly one selected candidate
+
+#### Scenario: every candidate is rejected
+
+- **WHEN** no evaluated candidate meets both acceptance thresholds
+- **THEN** all candidate decisions and the failed operation report commit together without a
+  selected candidate or successful document event
 
 ### Requirement: Threshold changes are checked against a calibration corpus
 

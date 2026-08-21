@@ -57,8 +57,11 @@ fixtures, and tie behavior simpler.
 ### Selection is part of the candidate record
 
 Add a non-null `selected boolean` with a partial unique index that allows one selected candidate per
-run. The editable `schema.sql` changes in place; there is no migration. The worker records all
-candidates before it commits completion. A quality rejection records candidates and then fails the run.
+run. The editable `schema.sql` changes in place; there is no migration. Successful completion inserts
+all candidate decisions, marks one selected, stores the accepted Document IR artifact, updates the
+run, and enqueues both completion events in the existing transaction. Quality rejection uses the
+same terminal boundary but stores only the raw artifact, leaves every candidate unselected, and
+enqueues only the failed operation report.
 
 Alternative: infer selection only from Document provenance. Rejected because rejected runs have no
 Document and operators still need the decision evidence.
@@ -75,8 +78,8 @@ score range. It does not add a generic corpus framework.
   for weight or threshold changes; add source-specific strategies only after measured failures.
 - [Readability and density can produce duplicate blocks] → Keep them as separate evidence; stable
   scoring and tie order make the duplicate harmless.
-- [Candidate persistence can succeed before final completion fails] → Candidate rows are owned run
-  evidence and remain valid for a failed run; completion still uses its existing atomic transaction.
+- [Candidate persistence enlarges the terminal transaction] → Keep the three-row candidate set
+  bounded and perform no network, parsing, or blob writes while the transaction is open.
 
 ## Migration Plan
 
