@@ -81,7 +81,8 @@ async fn consumed_capture_publishes_one_document_and_one_report()
             max_input_bytes: 4_096,
             max_dom_nodes: 64,
         },
-    )?;
+    )?
+    .document;
     let ir = store_document_ir(&store, &document).await?;
     let fetch = CompletedFetch {
         final_url: &run.url,

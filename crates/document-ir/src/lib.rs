@@ -2,6 +2,7 @@
 
 //! Bounded parse-once HTML conversion into the shared Document IR contract.
 
+mod candidate;
 mod dom;
 
 use ratatoskr_document_contracts::{
@@ -11,6 +12,24 @@ use ratatoskr_identifiers::{BlobRef, ContentDigest, DigestAlgorithm, DigestHex, 
 use sha2::{Digest as _, Sha256};
 
 use crate::dom::{Element, HtmlDom};
+
+/// One named in-memory candidate produced from the shared DOM.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CandidateDecision {
+    /// Stable extraction strategy name.
+    pub strategy: String,
+    /// Ordered blocks proposed by the strategy.
+    pub blocks: Vec<DocumentBlock>,
+}
+
+/// Selected Document IR plus every candidate considered from the same DOM.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HtmlExtraction {
+    /// Shared Document IR built from the selected candidate.
+    pub document: Document,
+    /// Candidate decisions in stable strategy priority order.
+    pub candidates: Vec<CandidateDecision>,
+}
 
 /// Finite parser budgets.
 #[derive(Debug, Clone, Copy)]
@@ -57,7 +76,7 @@ pub enum DocumentIrError {
 pub fn from_html(
     input: HtmlDocumentInput<'_>,
     limits: ParseLimits,
-) -> Result<Document, DocumentIrError> {
+) -> Result<HtmlExtraction, DocumentIrError> {
     if input.bytes.len() > limits.max_input_bytes {
         return Err(DocumentIrError::ResourceLimit);
     }
@@ -68,7 +87,6 @@ pub fn from_html(
     }
     let mut title = None;
     let mut language = None;
-    let mut blocks = Vec::new();
 
     for element in dom.elements() {
         let name = element.name();
@@ -80,24 +98,19 @@ pub fn from_html(
         if name == "title" && title.is_none() {
             title = normalized_text(element);
         }
-        let block = match name {
-            "h1" => heading(1, element),
-            "h2" => heading(2, element),
-            "h3" => heading(3, element),
-            "h4" => heading(4, element),
-            "h5" => heading(5, element),
-            "h6" => heading(6, element),
-            "p" => normalized_text(element).map(|text| DocumentBlock::Paragraph { text }),
-            _ => None,
-        };
-        if let Some(block) = block {
-            blocks.push(block);
-        }
     }
+
+    let candidates = candidate::extract(&dom);
+    let selected = candidates
+        .iter()
+        .find(|candidate| !candidate.blocks.is_empty())
+        .or_else(|| candidates.get(1))
+        .ok_or(DocumentIrError::InvalidIdentity)?;
+    let blocks = selected.blocks.clone();
 
     let canonical = ratatoskr_identifiers::canonical_json(&blocks)?;
     let digest = hex(&Sha256::digest(canonical.as_bytes()));
-    let strategy = ExtractionStrategy::parse("html_primitives")
+    let strategy = ExtractionStrategy::parse(selected.strategy.as_str())
         .map_err(|_| DocumentIrError::InvalidIdentity)?;
     let provenance = blocks
         .iter()
@@ -110,22 +123,51 @@ pub fn from_html(
             })
         })
         .collect::<Result<Vec<_>, DocumentIrError>>()?;
-    Ok(Document {
-        document_id: input.document_id,
-        source_address: input.source_address,
-        content_digest: ContentDigest {
-            algorithm: DigestAlgorithm::Sha256,
-            hex: DigestHex::parse(&digest).map_err(|_| DocumentIrError::InvalidIdentity)?,
+    Ok(HtmlExtraction {
+        document: Document {
+            document_id: input.document_id,
+            source_address: input.source_address,
+            content_digest: ContentDigest {
+                algorithm: DigestAlgorithm::Sha256,
+                hex: DigestHex::parse(&digest).map_err(|_| DocumentIrError::InvalidIdentity)?,
+            },
+            title,
+            language,
+            blocks,
+            provenance,
         },
-        title,
-        language,
-        blocks,
-        provenance,
+        candidates: candidates
+            .into_iter()
+            .map(|candidate| CandidateDecision {
+                strategy: candidate.strategy.as_str().to_owned(),
+                blocks: candidate.blocks,
+            })
+            .collect(),
     })
+}
+
+fn block(element: Element<'_>) -> Option<DocumentBlock> {
+    match element.name() {
+        "h1" => heading(1, element),
+        "h2" => heading(2, element),
+        "h3" => heading(3, element),
+        "h4" => heading(4, element),
+        "h5" => heading(5, element),
+        "h6" => heading(6, element),
+        "p" => normalized_text(element).map(|text| DocumentBlock::Paragraph { text }),
+        _ => None,
+    }
 }
 
 fn heading(level: u8, element: Element<'_>) -> Option<DocumentBlock> {
     normalized_text(element).map(|text| DocumentBlock::Heading { level, text })
+}
+
+fn block_text_len(block: &DocumentBlock) -> usize {
+    match block {
+        DocumentBlock::Heading { text, .. } | DocumentBlock::Paragraph { text } => text.len(),
+        _ => 0,
+    }
 }
 
 fn normalized_text(element: Element<'_>) -> Option<String> {

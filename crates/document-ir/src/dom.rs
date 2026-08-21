@@ -64,6 +64,10 @@ impl<'a> Element<'a> {
             ego_tree::iter::Edge::Close(_) => None,
         })
     }
+
+    pub(super) fn elements(self) -> impl Iterator<Item = Self> {
+        std::iter::once(self).chain(self.node.descendants().filter_map(Self::wrap))
+    }
 }
 
 #[derive(Debug)]

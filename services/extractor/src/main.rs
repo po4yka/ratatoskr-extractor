@@ -332,7 +332,7 @@ async fn process_run(
     metrics::histogram!("ratatoskr_extractor_parse_duration_seconds")
         .record(parse_started.elapsed().as_secs_f64());
     let document = match document {
-        Ok(document) => document,
+        Ok(extraction) => extraction.document,
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "Document IR conversion failed");
             fail_run(pool, run.run_id, "parse", false).await?;

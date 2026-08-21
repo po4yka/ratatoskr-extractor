@@ -22,7 +22,8 @@ fn one_dom_produces_ordered_shared_blocks_and_provenance() -> Result<(), Box<dyn
             max_input_bytes: 4_096,
             max_dom_nodes: 64,
         },
-    )?;
+    )?
+    .document;
 
     let expected = vec![
         DocumentBlock::Heading {
@@ -51,7 +52,7 @@ fn one_dom_produces_ordered_shared_blocks_and_provenance() -> Result<(), Box<dyn
             .all(|(index, evidence)| u32::try_from(index)
                 .is_ok_and(|block_index| evidence.block_index == block_index)
                 && evidence.source_blob == source
-                && evidence.extraction_strategy.as_str() == "html_primitives")
+                && evidence.extraction_strategy.as_str() == "readability")
     );
 
     let canonical = ratatoskr_identifiers::canonical_json(&document.blocks)?;

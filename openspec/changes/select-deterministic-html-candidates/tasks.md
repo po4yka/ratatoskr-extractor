@@ -1,7 +1,7 @@
 ## 1. Candidate generation
 
-- [ ] 1.1 Add failing test `crates/document-ir/tests/candidates.rs::semantic_article_beats_page_chrome`; assert noisy navigation and footer blocks are absent and selected provenance is `semantic`. Run it and confirm the current `html_primitives` document contains page chrome.
-- [ ] 1.2 Add semantic, readability-compatible, and density extraction over the existing DOM, return candidate decisions with the selected Document, make 1.1 pass, run document-ir format and Clippy gates, and commit this TDD pair on `main`.
+- [x] 1.1 Add failing test `crates/document-ir/tests/candidates.rs::semantic_article_beats_page_chrome`; assert noisy navigation and footer blocks are absent and selected provenance is `semantic`. Run it and confirm the current `html_primitives` document contains page chrome.
+- [x] 1.2 Add semantic, readability-compatible, and density extraction over the existing DOM, return candidate decisions with the selected Document, make 1.1 pass, run document-ir format and Clippy gates, and commit this TDD pair on `main`.
 
 ## 2. Deterministic quality
 
