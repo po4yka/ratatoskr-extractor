@@ -1,6 +1,6 @@
 //! Public HTML-to-Document-IR behavior.
 
-use extractor_document_ir::{HtmlDocumentInput, ParseLimits, from_html};
+use extractor_document_ir::{DocumentIrError, HtmlDocumentInput, ParseLimits, from_html};
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
     BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
@@ -16,7 +16,7 @@ fn one_dom_produces_ordered_shared_blocks_and_provenance() -> Result<(), Box<dyn
             document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000002")?,
             source_address: DocumentAddress::parse("https://example.com/article")?,
             source_blob: source.clone(),
-            bytes: br#"<!doctype html><html lang="en"><head><title>  Ratatoskr   Notes </title></head><body><h1> First </h1><p>Hello   world.</p><h2>Second</h2><p>More text.</p></body></html>"#,
+            bytes: br#"<!doctype html><html lang="en"><head><title>  Ratatoskr   Notes </title></head><body><h1> First </h1><p>Hello world. This paragraph records enough verified detail to remain useful after deterministic quality evaluation.</p><h2>Second</h2><p>More text follows with concrete context, complete sentences, and evidence for every downstream reader.</p></body></html>"#,
         },
         ParseLimits {
             max_input_bytes: 4_096,
@@ -31,14 +31,14 @@ fn one_dom_produces_ordered_shared_blocks_and_provenance() -> Result<(), Box<dyn
             text: "First".to_owned(),
         },
         DocumentBlock::Paragraph {
-            text: "Hello world.".to_owned(),
+            text: "Hello world. This paragraph records enough verified detail to remain useful after deterministic quality evaluation.".to_owned(),
         },
         DocumentBlock::Heading {
             level: 2,
             text: "Second".to_owned(),
         },
         DocumentBlock::Paragraph {
-            text: "More text.".to_owned(),
+            text: "More text follows with concrete context, complete sentences, and evidence for every downstream reader.".to_owned(),
         },
     ];
     assert_eq!(document.title.as_deref(), Some("Ratatoskr Notes"));
@@ -64,11 +64,13 @@ fn one_dom_produces_ordered_shared_blocks_and_provenance() -> Result<(), Box<dyn
 #[test]
 fn malformed_html_is_recovered_deterministically() -> Result<(), Box<dyn std::error::Error>> {
     let source = blob_ref()?;
+    let document_id = DocumentId::parse("018f0000-0000-7000-8000-000000000004")?;
+    let source_address = DocumentAddress::parse("https://example.com/malformed")?;
     let convert = || {
         from_html(
             HtmlDocumentInput {
-                document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000004")?,
-                source_address: DocumentAddress::parse("https://example.com/malformed")?,
+                document_id,
+                source_address: source_address.clone(),
                 source_blob: source.clone(),
                 bytes: b"<title>Broken<title><body><h1>Heading<p>first<h2>Next<p>second",
             },
@@ -77,13 +79,20 @@ fn malformed_html_is_recovered_deterministically() -> Result<(), Box<dyn std::er
                 max_dom_nodes: 64,
             },
         )
-        .map_err(Box::<dyn std::error::Error>::from)
     };
 
-    let first = convert()?;
-    let second = convert()?;
-    assert_eq!(first, second);
-    Ok(())
+    match (convert(), convert()) {
+        (
+            Err(DocumentIrError::LowQuality { candidates: first }),
+            Err(DocumentIrError::LowQuality { candidates: second }),
+        ) => {
+            assert_eq!(first, second);
+            Ok(())
+        }
+        (first, second) => {
+            Err(format!("unexpected malformed results: {first:?}, {second:?}").into())
+        }
+    }
 }
 
 fn blob_ref() -> Result<BlobRef, Box<dyn std::error::Error>> {

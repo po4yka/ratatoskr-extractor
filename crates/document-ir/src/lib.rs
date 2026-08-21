@@ -108,6 +108,12 @@ pub enum DocumentIrError {
     /// Canonical block serialization failed.
     #[error("Document IR blocks could not be serialized")]
     Serialization(#[from] serde_json::Error),
+    /// No candidate met the bounded quality thresholds.
+    #[error("HTML candidate quality is below the acceptance threshold")]
+    LowQuality {
+        /// Rejected candidate decisions retained for diagnostics and persistence.
+        candidates: Vec<CandidateDecision>,
+    },
 }
 
 /// Parses one HTML document and returns shared Document IR.
@@ -148,14 +154,17 @@ pub fn from_html(
         .map(|candidate| evaluate(candidate, title.as_deref()))
         .collect::<Vec<_>>();
     let selected_strategy = winner(&decisions, true)
-        .or_else(|| winner(&decisions, false))
         .and_then(|decision| {
             candidates
                 .iter()
                 .find(|candidate| candidate.strategy.as_str() == decision.strategy)
         })
-        .map(|candidate| candidate.strategy)
-        .ok_or(DocumentIrError::InvalidIdentity)?;
+        .map(|candidate| candidate.strategy);
+    let Some(selected_strategy) = selected_strategy else {
+        return Err(DocumentIrError::LowQuality {
+            candidates: decisions,
+        });
+    };
     let selected = candidates
         .iter()
         .find(|candidate| candidate.strategy == selected_strategy)

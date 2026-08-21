@@ -69,6 +69,37 @@ fn evaluation_is_repeatable_with_stable_ties() -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+#[test]
+fn login_shell_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let result = from_html(
+        HtmlDocumentInput {
+            document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000007")?,
+            source_address: DocumentAddress::parse("https://example.com/login")?,
+            source_blob: blob_ref()?,
+            bytes: b"<html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><p>Accept cookies to continue.</p></main></body></html>",
+        },
+        ParseLimits {
+            max_input_bytes: 4_096,
+            max_dom_nodes: 128,
+        },
+    );
+
+    match result {
+        Err(extractor_document_ir::DocumentIrError::LowQuality { candidates }) => {
+            assert_eq!(candidates.len(), 3);
+            assert!(candidates.iter().all(|candidate| !candidate.selected));
+            assert!(
+                candidates
+                    .iter()
+                    .all(|candidate| { candidate.reasons.contains(&QualityReason::TooShort) })
+            );
+            Ok(())
+        }
+        Ok(_) => Err("the login shell was accepted".into()),
+        Err(error) => Err(format!("unexpected extraction error: {error}").into()),
+    }
+}
+
 fn blob_ref() -> Result<BlobRef, Box<dyn std::error::Error>> {
     Ok(BlobRef {
         owner_service: BlobOwner::parse("ratatoskr-extractor")?,

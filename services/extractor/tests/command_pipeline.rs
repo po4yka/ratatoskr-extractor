@@ -62,7 +62,7 @@ async fn consumed_capture_publishes_one_document_and_one_report()
         .await?
         .ok_or("the command did not produce queued work")?;
     let html = bytes::Bytes::from_static(
-        b"<!doctype html><html><head><title>Article</title></head><body><h1>One</h1><p>Body.</p></body></html>",
+        b"<!doctype html><html><head><title>Article</title></head><body><article><h1>Article</h1><p>This accepted article contains enough deterministic content to cross the minimum quality boundary without relying on page chrome.</p><p>A second paragraph provides stable context and evidence for the command pipeline result.</p></article></body></html>",
     );
     let raw = store
         .store(
