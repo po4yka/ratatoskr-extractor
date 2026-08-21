@@ -9,6 +9,11 @@ sudo install -d -m 0750 -o root -g ratatoskr-extractor /etc/ratatoskr
 sudo install -d -m 0700 -o ratatoskr-extractor -g ratatoskr-extractor \
   /mnt/nvme/ratatoskr/blobs/ratatoskr-extractor
 sudo install -d -m 0770 -o root -g ratatoskr-extractor /mnt/nvme/ratatoskr/logs
+sudo -u postgres psql -f deploy/postgres/role.sql
+# Set the database password outside Git, add deploy/nats/extractor-permissions.conf to the host
+# NATS authorization list, then install the matching private seed:
+sudo install -m 0640 -o root -g ratatoskr-extractor /path/to/extractor.nkey \
+  /etc/ratatoskr/extractor.nkey
 sudo install -m 0755 target/release/ratatoskr-extractor /usr/local/bin/ratatoskr-extractor
 sudo install -m 0640 -o root -g ratatoskr-extractor \
   deploy/systemd/extractor.conf.example /etc/ratatoskr/extractor.conf
@@ -28,6 +33,11 @@ curl --fail http://127.0.0.1:9467/health/ready
 curl --fail http://127.0.0.1:9467/metrics
 sudo systemctl show ratatoskr-extractor -p MemoryHigh -p MemoryMax -p CPUQuotaPerSecUSec -p TasksMax
 ```
+
+Readiness requires the extractor-owned PostgreSQL schema and a connected JetStream client. The
+process creates the bounded `ratatoskr_commands` and `ratatoskr_events` streams if they are absent,
+consumes `cmd.content.capture.requested.v1`, and publishes only `evt.>` facts. Raw and Document IR
+bytes remain under the private blob root; PostgreSQL and NATS carry `BlobRef` values only.
 
 The unit intentionally does not use `IPAddressDeny=any`: public HTTP egress is the extractor's job.
 The resolver and every redirect hop enforce the SSRF policy. Host firewall policy remains a separate

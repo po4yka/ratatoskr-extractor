@@ -2,10 +2,9 @@
 
 `ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
-> **Status:** implementation plan items 1 through 3 are complete: the Rust service foundation,
-> URL normalization/routing and SSRF policy, and bounded streaming retrieval into extractor-owned
-> content-addressed storage. Parsing, Document IR, the browser worker, persistence, and events remain
-> planned.
+> **Status:** implementation plan items 1 through 4 and 6 are complete: foundation, URL/SSRF
+> policy, bounded retrieval, primitive parse-once Document IR, and the durable PostgreSQL/JetStream
+> pipeline. Candidate scoring, PDFs, and the browser worker remain planned.
 
 > [!IMPORTANT]
 > **Ratatoskr is in development.** No database holds data that has to survive a schema change.
@@ -39,13 +38,16 @@ crates/telemetry     structured tracing and Prometheus recording
 crates/url-routing   URL identity, source classification, and SSRF-safe DNS
 crates/blob-store    extractor-owned content-addressed artifacts and BlobRef verification
 crates/safe-fetch    pooled HTTP, redirects, limits, decoding, cache validation, and retry
+crates/document-ir   bounded HTML5 parse-once conversion to the shared Document contract
+crates/persistence   finite PostgreSQL pool and the one editable extractor schema
+crates/eventing      typed command inbox, leased worker records, outbox, and JetStream ACKs
 crates/test-support  deterministic local network and storage fixtures
-services/extractor   admin-only process, health, readiness, and shutdown
+services/extractor   command consumer, fetch/parse worker, publisher, health, and joined shutdown
 deploy/systemd       production unit and environment example
 ```
 
-The service exposes only `/health/live`, `/health/ready`, `/metrics`, and `/version`. A fetch API is
-not introduced before the command consumer planned for item 6.
+The service exposes only `/health/live`, `/health/ready`, `/metrics`, and `/version`; capture work
+arrives through `cmd.content.capture.requested.v1`, not an HTTP fetch API.
 
 ## Target pipeline
 
@@ -99,7 +101,8 @@ Raw response metadata and body hashes are retained as provenance. Sensitive URL 
 
 ## Parse once, extract many
 
-HTML is parsed once using a browser-grade HTML5 parser. Multiple deterministic algorithms then produce candidates from the same DOM:
+HTML is parsed once using an HTML5 parser. Item 4 emits headings and paragraphs with block-level
+raw-blob provenance. Item 5 will add deterministic candidates over that same DOM:
 
 - Readability-compatible extraction;
 - semantic `<article>` and `<main>` extraction;
@@ -112,23 +115,13 @@ A candidate contains its blocks, metadata, diagnostics, and evidence. It does no
 
 ## Canonical Document IR
 
-Markdown is an output format, not the canonical internal representation. The extractor publishes a typed document composed of ordered blocks and source spans:
+Markdown is an output format, not the canonical internal representation. The extractor publishes
+the shared `ratatoskr-document-contracts::Document`; its current block variants are:
 
 ```rust
-pub struct Document {
-    pub metadata: DocumentMetadata,
-    pub blocks: Vec<Block>,
-    pub provenance: Vec<SourceSpan>,
-}
-
-pub enum Block {
+pub enum DocumentBlock {
     Heading { level: u8, text: String },
     Paragraph { text: String },
-    List { ordered: bool, items: Vec<String> },
-    Quote { text: String },
-    Code { language: Option<String>, text: String },
-    Table { rows: Vec<Vec<String>> },
-    Image { url: String, alt: Option<String> },
 }
 ```
 
@@ -218,20 +211,17 @@ artifact is announced with the shared `BlobRef` contract, which carries owner, S
 effective media type, and exact length. It carries no filesystem path and does not cause an HTTP
 hop to local storage.
 
-There is no database, migration, inbox, or outbox in items 1 through 3. Those arrive with command-bus
-integration in item 6. Document IR starts at item 4 and is deliberately absent from the fetch and
-raw-artifact boundary.
+Item 6 adds the editable `schema.sql`, inbox/run/fetch/artifact/outbox records, and acknowledged
+JetStream delivery. There is no migration ledger while the product remains in development.
 
 ## Events
 
-Expected commands and events include:
+Implemented bus subjects are:
 
 ```text
-content.extraction.requested.v1
-content.document.extracted.v1
-content.extraction.failed.v1
-content.browser_render.requested.v1
-content.browser_render.completed.v1
+cmd.content.capture.requested.v1
+evt.content.document.extracted.v1
+evt.platform.operation.reported.v1
 ```
 
 Events are idempotent and correlated with Platform operations. Knowledge consumes accepted documents; it does not depend on extractor database tables.

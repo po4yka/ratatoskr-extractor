@@ -3,6 +3,9 @@ resolver = "3"
 members = [
     "crates/blob-store",
     "crates/core",
+    "crates/document-ir",
+    "crates/eventing",
+    "crates/persistence",
     "crates/safe-fetch",
     "crates/telemetry",
     "crates/test-support",
@@ -20,18 +23,28 @@ repository = "https://github.com/po4yka/ratatoskr-extractor"
 [workspace.dependencies]
 ratatoskr-extractor-blob-store = { version = "0.1.0", path = "crates/blob-store" }
 ratatoskr-extractor-core = { version = "0.1.0", path = "crates/core" }
+ratatoskr-extractor-document-ir = { version = "0.1.0", path = "crates/document-ir" }
+ratatoskr-extractor-eventing = { version = "0.1.0", path = "crates/eventing" }
+ratatoskr-extractor-persistence = { version = "0.1.0", path = "crates/persistence" }
 ratatoskr-extractor-safe-fetch = { version = "0.1.0", path = "crates/safe-fetch" }
 ratatoskr-extractor-telemetry = { version = "0.1.0", path = "crates/telemetry" }
 ratatoskr-extractor-test-support = { version = "0.1.0", path = "crates/test-support" }
 ratatoskr-extractor-url-routing = { version = "0.1.0", path = "crates/url-routing" }
 
 ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-error-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-event-envelope = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-operation-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
 
 async-compression = { version = "=0.4.43", default-features = false, features = ["brotli", "gzip", "tokio", "zstd"] }
+async-nats = "=0.50.0"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "matched-path", "tokio", "tracing"] }
 bytes = "=1.11.1"
 figment = { version = "=0.10.19", features = ["env"] }
 futures-util = { version = "=0.3.31", default-features = false, features = ["std"] }
+ego-tree = "=0.11.0"
+html5ever = "=0.39.0"
 http = "=1.5.0"
 httpdate = "=1.0.3"
 http-body-util = "=0.1.5"
@@ -43,9 +56,11 @@ opentelemetry = "=0.32.0"
 opentelemetry-otlp = { version = "=0.32.0", default-features = false, features = ["grpc-tonic", "trace", "tls-ring", "tls-roots", "tls-webpki-roots"] }
 opentelemetry_sdk = { version = "=0.32.1", features = ["rt-tokio", "trace"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["rustls", "stream"] }
+secrecy = { version = "=0.10.3", features = ["serde"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid"] }
 thiserror = "=2.0.20"
 tokio = { version = "=1.53.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
 tokio-util = { version = "=0.7.19", features = ["io"] }

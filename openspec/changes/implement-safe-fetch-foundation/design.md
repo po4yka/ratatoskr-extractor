@@ -15,8 +15,7 @@ The ordinary path must fetch once, validate every resolution and redirect, keep 
 
 **Non-Goals:**
 
-- No command consumer, NATS connection, inbox, outbox, database, or schema in this slice.
-- No HTML/PDF parsing, Document IR, candidate extraction, quality scoring, or browser process.
+- No candidate extraction, quality scoring, PDF/provider adapter, or browser process.
 - No authenticated requests, ambient proxy, cookies, provider session, or local-file input.
 - No blob HTTP service, signed blob URL, or off-host replication.
 
@@ -97,6 +96,40 @@ Alternative: treat every 304 as success. Rejected because a validator without it
 The binary exposes only `/health/live`, `/health/ready`, `/metrics`, and `/version`. It validates the blob root, builds the fetch stack, binds the admin listener, marks readiness, and waits for termination. The safe-fetch crate is exercised through integration tests until plan item 6 adds the command consumer. A temporary public fetch endpoint would become an unsupported product API and is not added.
 
 The systemd unit follows Platform's service identity, restart, logging, resource, filesystem, address-family, capability, and syscall rules. It grants write access only to the extractor blob tree. It does not copy Platform's `IPAddressDeny=any`, because public HTTP egress is this service's job; SSRF policy remains mandatory in the process.
+
+### 10. Parse one bounded HTML DOM into the shared contract
+
+`document-ir` reads verified extractor-owned bytes, parses them once with `html5ever` into a
+small service-owned tree, and walks that one DOM to produce the version-one shared block
+intersection: headings and
+paragraphs. It normalizes only whitespace, preserves reading order, records one provenance entry per
+block, and hashes the contracts repository's canonical JSON rendering of `blocks`. Node and input
+budgets are mandatory. Parsing runs in `spawn_blocking`; active HTML is never rendered or executed.
+
+This is not plan item 5: no competing candidates, score, selector strategy, or acceptance threshold
+exists. The fixed strategy is `html_primitives`, sufficient to create the shared primitive and to
+exercise persistence and event delivery.
+
+### 11. Copy Platform's durable delivery pattern into the owned schema
+
+One editable root `schema.sql` creates only `extractor.*`: sources, fetches, artifacts,
+extraction_runs, candidates, inbox_events, and outbox_events. There are no migration files or
+migration tool. The process owns one finite SQLx pool. A command transaction inserts the inbox row
+and a queued run together; duplicate `command_id` inserts nothing. Network and parsing work happens
+outside a database transaction. Completion writes owned records and both outgoing envelopes into the
+outbox in one transaction.
+
+The outbox claimant uses a finite lease, bounded exponential retry, `FOR UPDATE SKIP LOCKED`, a
+maximum attempt count, and JetStream acknowledgement before marking a row published. The command
+consumer uses a durable pull consumer and acknowledges only after the inbox/run transaction commits.
+The service owns and joins the consumer, worker, and publisher loops through one cancellation tree.
+
+Platform's command envelope is not yet a published contracts type. Extractor therefore deserializes
+the exact wire members Platform currently emits and preserves additive-envelope compatibility, while
+rejecting the wrong subject/type, invalid identifiers, or a non-HTTP payload before any state change. Outgoing Document IR and
+`OperationReported` use the SHA-pinned published contract types. The
+`content.document.extracted.v1` payload is exactly the published `Document` object, with no local
+cross-repository fields.
 
 ## Risks / Trade-offs
 

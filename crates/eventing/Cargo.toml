@@ -1,0 +1,42 @@
+[package]
+name = "ratatoskr-extractor-eventing"
+description = "Extractor command inbox and transactional report outbox."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_eventing"
+path = "src/lib.rs"
+
+[dependencies]
+ratatoskr-document-contracts.workspace = true
+ratatoskr-error-contracts.workspace = true
+ratatoskr-extractor-blob-store.workspace = true
+ratatoskr-event-envelope.workspace = true
+ratatoskr-identifiers.workspace = true
+ratatoskr-operation-contracts.workspace = true
+ratatoskr-extractor-url-routing.workspace = true
+async-nats.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+metrics.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+ratatoskr-extractor-persistence = { workspace = true, features = ["test-support"] }
+ratatoskr-extractor-test-support.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

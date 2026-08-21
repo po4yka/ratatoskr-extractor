@@ -132,6 +132,19 @@ pub fn init(config: &TelemetryConfig) -> Result<TelemetryGuard, TelemetryError> 
     metrics::describe_counter!(FETCH_FAILURES_TOTAL, "Fetch failures by bounded class");
     metrics::describe_histogram!(FETCH_DURATION_SECONDS, "Safe fetch duration in seconds");
     metrics::describe_counter!(FETCH_BYTES_TOTAL, "Fetched bytes by representation");
+    metrics::describe_counter!(
+        "ratatoskr_extractor_commands_total",
+        "Capture command outcomes"
+    );
+    metrics::describe_counter!(
+        "ratatoskr_extractor_outbox_publications_total",
+        "Outbox publication outcomes"
+    );
+    metrics::describe_counter!("ratatoskr_extractor_runs_total", "Extraction run outcomes");
+    metrics::describe_histogram!(
+        "ratatoskr_extractor_parse_duration_seconds",
+        "Parse-once duration in seconds"
+    );
     Ok(TelemetryGuard { provider, metrics })
 }
 

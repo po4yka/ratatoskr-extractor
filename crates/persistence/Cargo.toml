@@ -1,0 +1,29 @@
+[package]
+name = "ratatoskr-extractor-persistence"
+description = "Extractor-owned PostgreSQL pool, schema, and records."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_persistence"
+path = "src/lib.rs"
+
+[dependencies]
+ratatoskr-identifiers.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[features]
+test-support = []
+
+[dev-dependencies]
+ratatoskr-extractor-persistence = { path = ".", features = ["test-support"] }
+tokio.workspace = true
+
+[lints]
+workspace = true

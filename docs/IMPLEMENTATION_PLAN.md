@@ -3,9 +3,9 @@
 - [x] Scaffold Rust workspace, typed config, telemetry, errors, health, and test harness.
 - [x] Implement URL normalization, classification, and SSRF policy.
 - [x] Implement streaming safe fetch, redirects, cache metadata, and an extractor-owned raw artifact announced by `BlobRef`.
-- [ ] Implement HTML parse-once and Document IR primitives.
+- [x] Implement HTML parse-once and Document IR primitives.
 - [ ] Add semantic/readability/density candidates and deterministic quality evaluator.
-- [ ] Persist runs/candidates/artifacts and publish events with outbox/inbox.
+- [x] Persist runs/candidates/artifacts and publish events with outbox/inbox.
 - [ ] Add direct PDF and selected provider/source adapters.
 - [ ] Add isolated browser worker and strict escalation policy.
 - [ ] Build golden corpus, fuzzing, and performance reports.

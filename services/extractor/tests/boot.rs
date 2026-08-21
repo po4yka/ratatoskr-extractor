@@ -4,6 +4,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use extractor_eventing::NatsPublisher;
 use extractor_test_support::TemporaryBlobRoot;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -23,10 +24,17 @@ async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error
     let address = listener.local_addr()?;
     drop(listener);
     let binary = env!("CARGO_BIN_EXE_ratatoskr-extractor");
+    let database_url = database_url();
+    let bus_url = bus_url();
+    let durable = format!("extractor_boot_{}", uuid::Uuid::now_v7().simple());
+    let stream = prepare_durable(&bus_url, &durable).await?;
 
     let check = Command::new(binary)
         .arg("check-config")
         .env("RATATOSKR__BLOBS__ROOT", root.path())
+        .env("RATATOSKR__DATABASE__URL", &database_url)
+        .env("RATATOSKR__BUS__URL", &bus_url)
+        .env("RATATOSKR__BUS__DURABLE_NAME", &durable)
         .env("RATATOSKR__ADMIN__BIND", address.to_string())
         .output()?;
     assert!(check.status.success());
@@ -34,6 +42,9 @@ async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error
 
     let child = Command::new(binary)
         .env("RATATOSKR__BLOBS__ROOT", root.path())
+        .env("RATATOSKR__DATABASE__URL", &database_url)
+        .env("RATATOSKR__BUS__URL", &bus_url)
+        .env("RATATOSKR__BUS__DURABLE_NAME", &durable)
         .env("RATATOSKR__ADMIN__BIND", address.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -53,7 +64,54 @@ async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error
         .status()?;
     assert!(signal.success());
     wait_for_exit(&mut process.0).await?;
+    stream.delete_consumer(&durable).await?;
     Ok(())
+}
+
+async fn prepare_durable(
+    bus_url: &str,
+    durable: &str,
+) -> Result<async_nats::jetstream::stream::Stream, Box<dyn std::error::Error>> {
+    let publisher = NatsPublisher::connect(bus_url).await?;
+    publisher.ensure_command_stream().await?;
+    let stream = publisher.context().get_stream("ratatoskr_commands").await?;
+    stream
+        .get_or_create_consumer(
+            durable,
+            async_nats::jetstream::consumer::pull::Config {
+                durable_name: Some(durable.to_owned()),
+                filter_subject: "cmd.content.capture.requested.v1".to_owned(),
+                deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New,
+                ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit,
+                ack_wait: Duration::from_secs(30),
+                max_deliver: 12,
+                ..async_nats::jetstream::consumer::pull::Config::default()
+            },
+        )
+        .await?;
+    Ok(stream)
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test-only database location is not process configuration"
+)]
+fn database_url() -> String {
+    match std::env::var("EXTRACTOR_TEST_DATABASE_URL") {
+        Ok(value) => value,
+        Err(_) => "postgres://extractor:extractor@127.0.0.1:5434/extractor".to_owned(),
+    }
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test-only broker location is not process configuration"
+)]
+fn bus_url() -> String {
+    match std::env::var("EXTRACTOR_TEST_NATS_URL") {
+        Ok(value) => value,
+        Err(_) => "nats://127.0.0.1:4222".to_owned(),
+    }
 }
 
 async fn wait_for_status(

@@ -1,8 +1,8 @@
 [Unit]
 Description=Ratatoskr Extractor
 Documentation=https://github.com/po4yka/ratatoskr-extractor/blob/main/deploy/README.md
-After=network-online.target
-Wants=network-online.target
+After=network-online.target docker.service
+Wants=network-online.target docker.service
 StartLimitIntervalSec=0
 
 [Service]
@@ -49,6 +49,7 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 UMask=0077
 ReadWritePaths=/mnt/nvme/ratatoskr/blobs/ratatoskr-extractor
+ReadOnlyPaths=/etc/ratatoskr/extractor.nkey
 
 [Install]
 WantedBy=multi-user.target

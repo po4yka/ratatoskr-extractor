@@ -4,6 +4,7 @@ use std::path::Path;
 
 use extractor_core::{ExtractorConfig, load};
 use figment::Jail;
+use secrecy::ExposeSecret as _;
 
 #[test]
 fn defaults_are_finite_and_security_cannot_be_disabled() -> Result<(), serde_json::Error> {
@@ -22,6 +23,12 @@ fn defaults_are_finite_and_security_cannot_be_disabled() -> Result<(), serde_jso
     assert!(config.fetch.max_retries > 0);
     assert!(config.fetch.global_concurrency > 0);
     assert!(config.fetch.per_host_concurrency > 0);
+    assert!(config.database.url.expose_secret().is_empty());
+    assert!(config.database.max_connections > 0);
+    assert!(config.bus.poll_interval_ms > 0);
+    assert!(config.bus.worker_lease_seconds > 0);
+    assert!(config.parser.max_input_bytes > 0);
+    assert!(config.parser.max_dom_nodes > 0);
     assert!(config.shutdown.grace_seconds > 0);
 
     let encoded = serde_json::to_string(&config)?;

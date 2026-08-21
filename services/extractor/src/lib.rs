@@ -20,6 +20,7 @@ const DRAINING: u8 = 2;
 #[derive(Debug, Clone)]
 pub struct RuntimeHealth {
     state: Arc<AtomicU8>,
+    dependencies_healthy: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -68,13 +69,20 @@ impl RuntimeHealth {
     pub fn new() -> Self {
         Self {
             state: Arc::new(AtomicU8::new(STARTING)),
+            dependencies_healthy: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Marks startup as complete.
     pub fn mark_ready(&self) {
+        self.dependencies_healthy.store(true, Ordering::Release);
         // Ordering: publish completed startup before readiness becomes observable.
         self.state.store(READY, Ordering::Release);
+    }
+
+    /// Updates live `PostgreSQL` and NATS readiness.
+    pub fn mark_dependencies_healthy(&self, healthy: bool) {
+        self.dependencies_healthy.store(healthy, Ordering::Release);
     }
 
     /// Starts drain and makes readiness fail.
@@ -86,6 +94,7 @@ impl RuntimeHealth {
     fn is_ready(&self) -> bool {
         // Ordering: pair with startup and drain publication stores.
         self.state.load(Ordering::Acquire) == READY
+            && self.dependencies_healthy.load(Ordering::Acquire)
     }
 }
 

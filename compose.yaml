@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: extractor
+      POSTGRES_PASSWORD: extractor
+      POSTGRES_DB: extractor
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=und-x-icu --encoding=UTF8"
+    ports:
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U extractor -d extractor && psql -U extractor -d extractor -c 'select 1' > /dev/null"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+
+  nats:
+    image: nats:2-alpine
+    container_name: ratatoskr-extractor-nats
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    ports:
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8222/healthz | grep -q ok"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - extractor-nats-data:/data
+
+volumes:
+  extractor-nats-data:

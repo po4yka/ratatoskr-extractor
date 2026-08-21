@@ -3,9 +3,9 @@
 > Status: Active
 > Last reviewed: 2026-08-21
 
-The Rust workspace implements plan items 1 through 3: process foundation, URL/SSRF policy, and one
-bounded streaming fetch into extractor-owned content-addressed storage. Parsing, Document IR, the
-browser worker, persistence, and command-bus integration remain deferred.
+The Rust workspace implements plan items 1 through 4 and 6: foundation, URL/SSRF policy, bounded
+fetch, primitive parse-once Document IR, and PostgreSQL/JetStream inbox/outbox integration.
+Candidate scoring, PDFs, and the browser worker remain deferred.
 
 ## Toolchain and gate
 
