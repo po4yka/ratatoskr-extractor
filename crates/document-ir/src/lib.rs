@@ -214,8 +214,8 @@ fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateD
         .filter(|block| matches!(block, DocumentBlock::Paragraph { .. }))
         .count();
     let metrics = QualityMetrics {
-        text_characters: u32::try_from(text_characters).unwrap_or(u32::MAX),
-        paragraph_count: u16::try_from(paragraph_count).unwrap_or(u16::MAX),
+        text_characters: u32::try_from(text_characters).map_or(u32::MAX, std::convert::identity),
+        paragraph_count: u16::try_from(paragraph_count).map_or(u16::MAX, std::convert::identity),
         text_volume: component(text_characters, 300, 300),
         paragraph_distribution: component(paragraph_count, 4, 200),
         non_link_share: share(text_characters, candidate.link_characters, 200),
@@ -268,7 +268,7 @@ fn winner(decisions: &[CandidateDecision], accepted_only: bool) -> Option<&Candi
 
 fn component(value: usize, full_value: usize, weight: u16) -> u16 {
     let weighted = value.min(full_value).saturating_mul(usize::from(weight)) / full_value;
-    u16::try_from(weighted).unwrap_or(weight)
+    u16::try_from(weighted).map_or(weight, std::convert::identity)
 }
 
 fn share(total: usize, excluded: usize, weight: u16) -> u16 {
@@ -279,7 +279,7 @@ fn share(total: usize, excluded: usize, weight: u16) -> u16 {
         .saturating_sub(excluded.min(total))
         .saturating_mul(usize::from(weight))
         / total;
-    u16::try_from(weighted).unwrap_or(weight)
+    u16::try_from(weighted).map_or(weight, std::convert::identity)
 }
 
 fn title_matches(blocks: &[DocumentBlock], title: Option<&str>) -> bool {
