@@ -1,17 +1,39 @@
 # Developing Ratatoskr Extractor
 
-> Status: Proposed  
-> Last reviewed: 2026-08-20
+> Status: Active
+> Last reviewed: 2026-08-21
 
-The repository is in architecture bootstrap. The extractor, browser worker, parsers, fixtures, and benchmarks are not implemented.
+The Rust workspace implements plan items 1 through 3: process foundation, URL/SSRF policy, and one
+bounded streaming fetch into extractor-owned content-addressed storage. Parsing, Document IR, the
+browser worker, persistence, and command-bus integration remain deferred.
 
-## Intended toolchain
+## Toolchain and gate
 
-Rust/Tokio, Reqwest/Rustls, html5ever/scraper, PDF adapters, bounded CPU work, SQLx/PostgreSQL, BlobStore, Chromium behind a `BrowserRenderer`, tracing, testcontainers, fuzz/property tests, and benchmark tooling.
+`rust-toolchain.toml` pins Rust 1.97. Every command uses the committed lock file.
+
+### Rust - the CI gate
+
+```bash
+cargo fetch --locked
+cargo deny --locked check
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo build --workspace --locked
+cargo test --workspace --locked
+cargo test --workspace --locked --doc
+cargo build --workspace --locked --release
+```
+
+The file-size ratchet is the one check that Cargo cannot express:
+
+```bash
+git ls-files -z "*.rs" | xargs -0 -r wc -l | awk '$2 != "total" && $1 > 850 { print; bad = 1 } END { exit bad }'
+```
 
 ## Code size limits
 
-There is no code here yet, so no limit is enforced yet. The commit that brings the first manifest brings the configuration that carries the limits with it: `clippy.toml` beside a `Cargo.toml`, `eslint.config.js` beside a `package.json`. `fleet.yml` fails the gate when a manifest arrives without one, so the rule has a check behind it and not only this paragraph.
+`clippy.toml` carries the function, block, signature, and type limits copied from Platform. CI also
+rejects a tracked Rust source file above 850 lines.
 
 `ratatoskr-workspace/docs/QUALITY_GATES.md` holds the numbers the repositories with code use today, the command that measured each one, and the limits that were rejected with the reason. Read it before you choose numbers, then measure this tree. Each limit is set at the worst case the tree already has, so that the check fails on a regression and not on work that has not been done yet.
 
@@ -23,7 +45,7 @@ There is no code here yet, so no limit is enforced yet. The commit that brings t
 4. Test SSRF, redirects, limits, malformed input, determinism, and cancellation.
 5. Compare quality, latency, requests, bytes, CPU, memory, and browser escalation against baseline.
 
-The first scaffold PR must document exact build, format, lint, unit, integration, fuzz, corpus, benchmark, browser, and migration commands. LLM credentials must never be needed because LLM interpretation is outside this repository.
+LLM credentials are not needed because LLM interpretation is outside this repository.
 
 ## What a clone needs before you plan a change
 

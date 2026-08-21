@@ -1,0 +1,3 @@
+RATATOSKR__ADMIN__BIND=0.0.0.0:9467
+RATATOSKR__BLOBS__ROOT=/mnt/nvme/ratatoskr/blobs/ratatoskr-extractor
+RATATOSKR__TELEMETRY__LOG_FORMAT=json

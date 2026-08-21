@@ -1,0 +1,22 @@
+[package]
+name = "ratatoskr-extractor-url-routing"
+description = "URL normalization, routing, DNS validation, and SSRF policy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_url_routing"
+path = "src/lib.rs"
+
+[dependencies]
+reqwest.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

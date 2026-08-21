@@ -1,0 +1,33 @@
+[package]
+name = "ratatoskr-extractor-service"
+description = "Ratatoskr Extractor service process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_service"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ratatoskr-extractor"
+path = "src/main.rs"
+
+[dependencies]
+ratatoskr-extractor-blob-store.workspace = true
+ratatoskr-extractor-core.workspace = true
+ratatoskr-extractor-safe-fetch.workspace = true
+ratatoskr-extractor-telemetry.workspace = true
+axum.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+ratatoskr-extractor-test-support.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

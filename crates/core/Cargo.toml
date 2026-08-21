@@ -1,0 +1,26 @@
+[package]
+name = "ratatoskr-extractor-core"
+description = "Typed configuration and shared errors for Ratatoskr Extractor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_core"
+path = "src/lib.rs"
+
+[dependencies]
+figment.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+figment = { workspace = true, features = ["test"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

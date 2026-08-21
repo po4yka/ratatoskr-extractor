@@ -2,7 +2,10 @@
 
 `ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
-> **Status:** architecture bootstrap. The extraction engine, browser worker, Document IR, and benchmark corpus described below are planned and are not implemented yet.
+> **Status:** implementation plan items 1 through 3 are complete: the Rust service foundation,
+> URL normalization/routing and SSRF policy, and bounded streaming retrieval into extractor-owned
+> content-addressed storage. Parsing, Document IR, the browser worker, persistence, and events remain
+> planned.
 
 > [!IMPORTANT]
 > **Ratatoskr is in development.** No database holds data that has to survive a schema change.
@@ -27,6 +30,22 @@ ratatoskr-browser-worker
 ```
 
 The extractor owns URL classification, safe retrieval, parsing, candidate generation, quality scoring, and canonical document construction. The browser worker owns Chromium lifecycle and rendered-DOM acquisition. Neither component performs summaries, embeddings, or semantic interpretation.
+
+## Implemented workspace
+
+```text
+crates/core          typed configuration and startup errors
+crates/telemetry     structured tracing and Prometheus recording
+crates/url-routing   URL identity, source classification, and SSRF-safe DNS
+crates/blob-store    extractor-owned content-addressed artifacts and BlobRef verification
+crates/safe-fetch    pooled HTTP, redirects, limits, decoding, cache validation, and retry
+crates/test-support  deterministic local network and storage fixtures
+services/extractor   admin-only process, health, readiness, and shutdown
+deploy/systemd       production unit and environment example
+```
+
+The service exposes only `/health/live`, `/health/ready`, `/metrics`, and `/version`. A fetch API is
+not introduced before the command consumer planned for item 6.
 
 ## Target pipeline
 
@@ -62,7 +81,7 @@ Platform-specific services remain authoritative for authenticated account data. 
 
 ## Safe HTTP retrieval
 
-The retrieval layer is expected to use `reqwest` with `rustls` and enforce:
+The implemented retrieval layer uses `reqwest` with `rustls` and enforces:
 
 - HTTP/HTTPS-only targets;
 - DNS and redirect-hop SSRF checks;
@@ -74,7 +93,7 @@ The retrieval layer is expected to use `reqwest` with `rustls` and enforce:
 - streaming hashes and MIME sniffing;
 - bounded redirects and timeouts;
 - `Retry-After`, ETag, and `Last-Modified` support;
-- circuit breaking and structured failure classification.
+- closed retry and failure classification.
 
 Raw response metadata and body hashes are retained as provenance. Sensitive URL components are redacted from logs.
 
@@ -194,17 +213,14 @@ This is an optimization hint, not an authority. Every result still passes the sa
 
 ## Data ownership
 
-The service owns an `extractor.*` PostgreSQL schema for:
+Raw bytes stay on the extractor host beneath its configured private content-addressed root. The
+artifact is announced with the shared `BlobRef` contract, which carries owner, SHA-256 digest,
+effective media type, and exact length. It carries no filesystem path and does not cause an HTTP
+hop to local storage.
 
-- extraction requests and attempts;
-- source fetch metadata;
-- candidate diagnostics;
-- accepted document references;
-- host strategy statistics;
-- cache and revalidation metadata;
-- outbox/inbox records.
-
-Large bodies, rendered DOM, PDFs, attachments, and Document IR snapshots are stored in the shared content-addressed BlobStore under extractor-owned references.
+There is no database, migration, inbox, or outbox in items 1 through 3. Those arrive with command-bus
+integration in item 6. Document IR starts at item 4 and is deliberately absent from the fetch and
+raw-artifact boundary.
 
 ## Events
 

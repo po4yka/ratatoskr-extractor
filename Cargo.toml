@@ -1,0 +1,79 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/blob-store",
+    "crates/core",
+    "crates/safe-fetch",
+    "crates/telemetry",
+    "crates/test-support",
+    "crates/url-routing",
+    "services/extractor",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "BSD-3-Clause"
+repository = "https://github.com/po4yka/ratatoskr-extractor"
+
+[workspace.dependencies]
+ratatoskr-extractor-blob-store = { version = "0.1.0", path = "crates/blob-store" }
+ratatoskr-extractor-core = { version = "0.1.0", path = "crates/core" }
+ratatoskr-extractor-safe-fetch = { version = "0.1.0", path = "crates/safe-fetch" }
+ratatoskr-extractor-telemetry = { version = "0.1.0", path = "crates/telemetry" }
+ratatoskr-extractor-test-support = { version = "0.1.0", path = "crates/test-support" }
+ratatoskr-extractor-url-routing = { version = "0.1.0", path = "crates/url-routing" }
+
+ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+
+async-compression = { version = "=0.4.43", default-features = false, features = ["brotli", "gzip", "tokio", "zstd"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "matched-path", "tokio", "tracing"] }
+bytes = "=1.11.1"
+figment = { version = "=0.10.19", features = ["env"] }
+futures-util = { version = "=0.3.31", default-features = false, features = ["std"] }
+http = "=1.5.0"
+httpdate = "=1.0.3"
+http-body-util = "=0.1.5"
+hyper = { version = "=1.11.0", features = ["http1", "server"] }
+hyper-util = { version = "=0.1.20", features = ["server-auto", "tokio"] }
+metrics = "=0.24.6"
+metrics-exporter-prometheus = { version = "=0.18.3", default-features = false }
+opentelemetry = "=0.32.0"
+opentelemetry-otlp = { version = "=0.32.0", default-features = false, features = ["grpc-tonic", "trace", "tls-ring", "tls-roots", "tls-webpki-roots"] }
+opentelemetry_sdk = { version = "=0.32.1", features = ["rt-tokio", "trace"] }
+reqwest = { version = "=0.13.4", default-features = false, features = ["rustls", "stream"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
+thiserror = "=2.0.20"
+tokio = { version = "=1.53.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
+tokio-util = { version = "=0.7.19", features = ["io"] }
+tower = "=0.5.3"
+tracing = "=0.1.44"
+tracing-opentelemetry = "=0.33.0"
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["ansi", "env-filter", "fmt", "json", "registry", "std"] }
+url = { version = "=2.5.8", features = ["serde"] }
+uuid = { version = "=1.24.1", features = ["v7"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+missing_debug_implementations = "deny"
+unreachable_pub = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+
+[profile.release]
+debug = 1
