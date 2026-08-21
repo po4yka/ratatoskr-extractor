@@ -5,7 +5,9 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use extractor_eventing::NatsPublisher;
+use extractor_persistence::test_support::TestDatabase;
 use extractor_test_support::TemporaryBlobRoot;
+use sqlx::ConnectOptions as _;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 struct ProcessGuard(Child);
@@ -19,12 +21,18 @@ impl Drop for ProcessGuard {
 
 #[tokio::test]
 async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
     let root = TemporaryBlobRoot::create().await?;
     let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let address = listener.local_addr()?;
     drop(listener);
     let binary = env!("CARGO_BIN_EXE_ratatoskr-extractor");
-    let database_url = database_url();
+    let database_url = database
+        .database
+        .pool()
+        .connect_options()
+        .to_url_lossy()
+        .to_string();
     let bus_url = bus_url();
     let durable = format!("extractor_boot_{}", uuid::Uuid::now_v7().simple());
     let stream = prepare_durable(&bus_url, &durable).await?;
@@ -65,6 +73,7 @@ async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error
     assert!(signal.success());
     wait_for_exit(&mut process.0).await?;
     stream.delete_consumer(&durable).await?;
+    database.cleanup().await?;
     Ok(())
 }
 
@@ -90,17 +99,6 @@ async fn prepare_durable(
         )
         .await?;
     Ok(stream)
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test-only database location is not process configuration"
-)]
-fn database_url() -> String {
-    match std::env::var("EXTRACTOR_TEST_DATABASE_URL") {
-        Ok(value) => value,
-        Err(_) => "postgres://extractor:extractor@127.0.0.1:5434/extractor".to_owned(),
-    }
 }
 
 #[expect(
