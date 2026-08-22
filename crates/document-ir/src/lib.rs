@@ -173,11 +173,44 @@ pub fn from_html(
         decision.selected = decision.strategy == selected_strategy.as_str();
     }
     let blocks = selected.blocks.clone();
-
-    let canonical = ratatoskr_identifiers::canonical_json(&blocks)?;
-    let digest = hex(&Sha256::digest(canonical.as_bytes()));
     let strategy = ExtractionStrategy::parse(selected.strategy.as_str())
         .map_err(|_| DocumentIrError::InvalidIdentity)?;
+    let document = assemble_document(
+        input.document_id,
+        input.source_address,
+        &input.source_blob,
+        &strategy,
+        title,
+        language,
+        blocks,
+    )?;
+    Ok(HtmlExtraction {
+        document,
+        candidates: decisions,
+    })
+}
+
+/// Assembles the shared Document contract from ordered blocks and one strategy.
+///
+/// The content digest is SHA-256 over the canonical JSON rendering of `blocks` alone, and every
+/// block receives provenance naming `strategy` and the verified source artifact. All extraction
+/// paths must build their Document through this constructor so identity and evidence stay
+/// uniform.
+///
+/// # Errors
+///
+/// Returns [`DocumentIrError`] when a service-owned contract value cannot be constructed.
+pub fn assemble_document(
+    document_id: DocumentId,
+    source_address: DocumentAddress,
+    source_blob: &BlobRef,
+    strategy: &ExtractionStrategy,
+    title: Option<String>,
+    language: Option<LanguageTag>,
+    blocks: Vec<DocumentBlock>,
+) -> Result<Document, DocumentIrError> {
+    let canonical = ratatoskr_identifiers::canonical_json(&blocks)?;
+    let digest = hex(&Sha256::digest(canonical.as_bytes()));
     let provenance = blocks
         .iter()
         .enumerate()
@@ -185,24 +218,21 @@ pub fn from_html(
             Ok(DocumentProvenance {
                 block_index: u32::try_from(index).map_err(|_| DocumentIrError::InvalidIdentity)?,
                 extraction_strategy: strategy.clone(),
-                source_blob: input.source_blob.clone(),
+                source_blob: source_blob.clone(),
             })
         })
         .collect::<Result<Vec<_>, DocumentIrError>>()?;
-    Ok(HtmlExtraction {
-        document: Document {
-            document_id: input.document_id,
-            source_address: input.source_address,
-            content_digest: ContentDigest {
-                algorithm: DigestAlgorithm::Sha256,
-                hex: DigestHex::parse(&digest).map_err(|_| DocumentIrError::InvalidIdentity)?,
-            },
-            title,
-            language,
-            blocks,
-            provenance,
+    Ok(Document {
+        document_id,
+        source_address,
+        content_digest: ContentDigest {
+            algorithm: DigestAlgorithm::Sha256,
+            hex: DigestHex::parse(&digest).map_err(|_| DocumentIrError::InvalidIdentity)?,
         },
-        candidates: decisions,
+        title,
+        language,
+        blocks,
+        provenance,
     })
 }
 

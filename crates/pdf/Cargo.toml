@@ -12,6 +12,7 @@ name = "extractor_pdf"
 path = "src/lib.rs"
 
 [dependencies]
+lopdf.workspace = true
 pdf-extract.workspace = true
 ratatoskr-document-contracts.workspace = true
 ratatoskr-extractor-document-ir.workspace = true
