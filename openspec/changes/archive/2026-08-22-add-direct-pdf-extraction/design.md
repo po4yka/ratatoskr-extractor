@@ -44,7 +44,10 @@ inputs (short `/MediaBox` arrays, operators with missing operands, unknown color
 CMaps). Accepted knowingly because the crate is isolated behind a new leaf crate, pinned to an
 exact version like every workspace dependency, screened by `cargo deny` (advisories, licenses,
 bans), and wrapped in a panic-containment boundary (below). A panic there is a typed failure, not a
-process crash; if advisories appear, the boundary makes replacement a single-crate change.
+process crash; if advisories appear, the boundary makes replacement a single-crate change. One
+advisory is accepted with a documented ignore: RUSTSEC-2026-0192 marks `ttf-parser` unmaintained;
+it reaches us only through pdf-extract → lopdf embedded-font parsing, no safe upgrade exists, and
+the deny entry records the revisit trigger.
 
 ### Placement: new leaf crate `crates/pdf`
 
