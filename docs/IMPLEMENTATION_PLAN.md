@@ -6,7 +6,8 @@
 - [x] Implement HTML parse-once and Document IR primitives.
 - [x] Add semantic/readability/density candidates and deterministic quality evaluator.
 - [x] Persist runs/candidates/artifacts and publish events with outbox/inbox.
-- [ ] Add direct PDF and selected provider/source adapters.
+- [x] Add direct PDF extraction producing Document IR with typed encrypted/pathological failure modes.
+- [ ] Add selected provider/source adapters.
 - [ ] Add isolated browser worker and strict escalation policy.
 - [ ] Build golden corpus, fuzzing, and performance reports.
 - [ ] Run legacy shadow comparison and cut over source classes independently.

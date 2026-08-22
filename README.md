@@ -2,9 +2,11 @@
 
 `ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
-> **Status:** implementation plan items 1 through 6 are complete: foundation, URL/SSRF policy,
-> bounded retrieval, parse-once HTML candidates, deterministic quality selection, Document IR, and
-> the durable PostgreSQL/JetStream pipeline. PDFs and the browser worker remain planned.
+> **Status:** implementation plan items 1 through 6 are complete plus direct PDF extraction (the
+> first half of item 7): foundation, URL/SSRF policy, bounded retrieval, parse-once HTML
+> candidates, deterministic quality selection, Document IR, the durable PostgreSQL/JetStream
+> pipeline, and bounded PDF text extraction. Provider/source adapters and the browser worker remain
+> planned; scanned PDFs without a text layer are recorded as an explicit degraded outcome.
 
 > [!IMPORTANT]
 > **Ratatoskr is in development.** No database holds data that has to survive a schema change.
@@ -69,11 +71,11 @@ The ordinary path performs one network fetch. Candidate extractors compete over 
 
 ## Source classification
 
-Routing happens before generic article extraction. Planned source adapters include:
+Routing happens before generic article extraction. Direct PDF extraction is implemented; remaining
+planned source adapters include:
 
 - Reddit public/API representations;
 - Hacker News item data;
-- direct PDFs;
 - ordinary HTML articles;
 - YouTube transcript/media references;
 - platform URLs routed to GitHub, X, Instagram, Threads, Telegram, or AI-archive services;
@@ -297,6 +299,7 @@ The legacy and Rust pipelines will run in shadow mode. Evaluation compares compl
 
 ## Project status
 
-The ordinary HTML service path, parser, deterministic evaluator, and small calibration corpus are
-implemented. PDFs, the isolated browser worker, and broad corpus/performance reporting remain
-planned.
+The ordinary HTML service path, parser, deterministic evaluator, small calibration corpus, and
+direct PDF extraction with typed encrypted/pathological failure modes are implemented. Provider
+adapters, the isolated browser worker, OCR for scanned PDFs, and broad corpus/performance reporting
+remain planned.
