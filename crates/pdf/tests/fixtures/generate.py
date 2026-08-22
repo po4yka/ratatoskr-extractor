@@ -289,7 +289,11 @@ def main() -> int:
     blank_owner = owner_entry(OWNER_PASSWORD.encode(), b"")
     blank_key = rc4_key(b"", blank_owner, -1)
     blank_user = user_entry_revision2(blank_key)
-    blank = build_simple_pdf([[(72, 720, "Readable after blank-password decryption.")]])
+    blank = build_simple_pdf(
+        [[(72, 720, "This document ships with an empty user password."),
+          (72, 702, "Ordinary readers may therefore decrypt and extract it without any prompt."),
+          (72, 684, "The direct extraction path must accept this content after decryption.")]]
+    )
     blank.add(
         99,
         (
