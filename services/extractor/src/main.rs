@@ -6,16 +6,14 @@ use std::path::Path;
 use std::time::Duration;
 
 use extractor_blob_store::BlobStore;
-use extractor_core::{ExtractorConfig, ParserConfig};
-use extractor_document_ir::{DocumentIrError, HtmlDocumentInput, ParseLimits, from_html};
-use extractor_eventing::{
-    CompletedFetch, NatsPublisher, claim_queued_run, complete_document, fail_run, reject_quality,
-    run_command_consumer, run_outbox_once, store_document_ir,
-};
+use extractor_core::{ExtractorConfig, ParserConfig, PdfConfig};
+use extractor_eventing::{NatsPublisher, claim_queued_run, run_command_consumer, run_outbox_once};
 use extractor_persistence::Database;
-use extractor_safe_fetch::{CacheOutcome, FetchRequest, FetchResult, SafeFetcher};
-use extractor_service::{AdmissionController, RuntimeHealth, ShutdownCoordinator, admin_router};
-use ratatoskr_document_contracts::DocumentAddress;
+use extractor_safe_fetch::SafeFetcher;
+use extractor_service::{
+    AdmissionController, ProcessError, RuntimeHealth, ShutdownCoordinator, admin_router,
+    process_run,
+};
 use secrecy::ExposeSecret as _;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -48,30 +46,6 @@ async fn main() {
 enum Command {
     Run,
     CheckConfig,
-}
-
-#[derive(Debug, thiserror::Error)]
-enum ProcessError {
-    #[error("artifact storage initialization failed")]
-    Blob(#[from] extractor_blob_store::BlobStoreError),
-    #[error("safe fetch initialization failed")]
-    Fetch(#[from] extractor_safe_fetch::SafeFetchError),
-    #[error("telemetry initialization failed")]
-    Telemetry(#[from] extractor_telemetry::TelemetryError),
-    #[error("admin listener failed")]
-    Io(#[from] std::io::Error),
-    #[error("database initialization failed")]
-    Database(#[from] extractor_persistence::PersistenceError),
-    #[error("event bus initialization failed")]
-    Bus(#[from] extractor_eventing::PublishError),
-    #[error("event pipeline failed")]
-    Eventing(#[from] extractor_eventing::ConsumeError),
-    #[error("background task failed")]
-    Join(#[from] tokio::task::JoinError),
-    #[error("a required background task stopped")]
-    BackgroundStopped,
-    #[error("Document IR identity is invalid")]
-    DocumentIdentity,
 }
 
 fn command() -> Result<Command, ()> {
@@ -152,6 +126,7 @@ async fn run_initialized(
         fetcher,
         store,
         config.parser.clone(),
+        config.pdf.clone(),
         config.bus.worker_lease_seconds,
         config.bus.poll_interval_ms,
         admission.clone(),
@@ -247,6 +222,7 @@ async fn worker_loop(
     fetcher: SafeFetcher,
     store: BlobStore,
     parser: ParserConfig,
+    pdf: PdfConfig,
     lease_seconds: i32,
     poll_interval_ms: u64,
     admission: AdmissionController,
@@ -271,124 +247,10 @@ async fn worker_loop(
         tokio::select! {
             biased;
             () = forced.cancelled() => {}
-            result = process_run(&pool, &fetcher, &store, &parser, &run) => result?,
+            result = process_run(&pool, &fetcher, &store, &parser, &pdf, &run) => result?,
         }
         drop(permit);
     }
-}
-
-async fn process_run(
-    pool: &sqlx::PgPool,
-    retriever: &SafeFetcher,
-    store: &BlobStore,
-    parser: &ParserConfig,
-    run: &extractor_eventing::QueuedRun,
-) -> Result<(), ProcessError> {
-    let fetched = match retriever.fetch(FetchRequest::new(&run.url)).await {
-        Ok(fetched) => fetched,
-        Err(error) => {
-            tracing::warn!(run_id = %run.run_id, error = %error, "safe fetch failed");
-            fail_run(pool, run.run_id, "fetch", fetch_retryable(&error)).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-    };
-    if fetched.media_type != "text/html" {
-        fail_run(pool, run.run_id, "unsupported_media", false).await?;
-        metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-        return Ok(());
-    }
-    let source_path = match store.verify(&fetched.artifact).await {
-        Ok(path) => path,
-        Err(error) => {
-            tracing::warn!(run_id = %run.run_id, error = %error, "raw artifact verification failed");
-            fail_run(pool, run.run_id, "artifact", false).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-    };
-    let bytes = tokio::fs::read(source_path).await?;
-    let address = DocumentAddress::parse(fetched.final_url.as_str())
-        .map_err(|_| ProcessError::DocumentIdentity)?;
-    let raw = fetched.artifact.clone();
-    let limits = ParseLimits {
-        max_input_bytes: parser.max_input_bytes,
-        max_dom_nodes: parser.max_dom_nodes,
-    };
-    let document_id = run.document_id;
-    let parse_started = std::time::Instant::now();
-    let document = tokio::task::spawn_blocking(move || {
-        from_html(
-            HtmlDocumentInput {
-                document_id,
-                source_address: address,
-                source_blob: raw,
-                bytes: &bytes,
-            },
-            limits,
-        )
-    })
-    .await?;
-    metrics::histogram!("ratatoskr_extractor_parse_duration_seconds")
-        .record(parse_started.elapsed().as_secs_f64());
-    let extraction = match document {
-        Ok(extraction) => extraction,
-        Err(DocumentIrError::LowQuality { candidates }) => {
-            let fetch = completed_fetch(&fetched);
-            reject_quality(pool, run.run_id, &fetch, &candidates).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-        Err(error) => {
-            tracing::warn!(run_id = %run.run_id, error = %error, "Document IR conversion failed");
-            fail_run(pool, run.run_id, "parse", false).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-    };
-    let ir_blob = store_document_ir(store, &extraction.document).await?;
-    let fetch = completed_fetch(&fetched);
-    complete_document(
-        pool,
-        run.run_id,
-        &extraction.document,
-        &ir_blob,
-        &fetch,
-        &extraction.candidates,
-    )
-    .await?;
-    metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
-    Ok(())
-}
-
-fn completed_fetch(fetched: &FetchResult) -> CompletedFetch<'_> {
-    CompletedFetch {
-        final_url: fetched.final_url.as_str(),
-        http_status: fetched.status,
-        media_type: &fetched.media_type,
-        wire_bytes: fetched.wire_bytes,
-        decoded_bytes: fetched.decoded_bytes,
-        attempts: fetched.metadata.attempts,
-        cache_outcome: match fetched.metadata.cache_outcome {
-            CacheOutcome::Fresh => "fresh",
-            CacheOutcome::Revalidated => "revalidated",
-        },
-        etag: fetched.metadata.etag.as_deref(),
-        last_modified: fetched.metadata.last_modified.as_deref(),
-        raw_blob: &fetched.artifact,
-    }
-}
-
-const fn fetch_retryable(error: &extractor_safe_fetch::SafeFetchError) -> bool {
-    matches!(
-        error,
-        extractor_safe_fetch::SafeFetchError::Transport
-            | extractor_safe_fetch::SafeFetchError::Dns
-            | extractor_safe_fetch::SafeFetchError::TimeoutTotal
-            | extractor_safe_fetch::SafeFetchError::TimeoutFirstByte
-            | extractor_safe_fetch::SafeFetchError::TimeoutReadIdle
-            | extractor_safe_fetch::SafeFetchError::Overloaded
-    )
 }
 
 #[cfg(unix)]

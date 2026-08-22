@@ -1,6 +1,14 @@
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    # RUSTSEC-2026-0192: ttf-parser is unmaintained upstream and reaches this workspace only
+    # through `pdf-extract` -> `lopdf` while parsing embedded TrueType fonts in untrusted PDFs.
+    # No safe upgrade exists; the maintained alternative (skrifa) needs an upstream migration in
+    # pdf-extract or lopdf. Revisit when either publishes a version that drops ttf-parser, or if
+    # a vulnerability advisory against ttf-parser lands.
+    "RUSTSEC-2026-0192",
+]
 
 [licenses]
 version = 2

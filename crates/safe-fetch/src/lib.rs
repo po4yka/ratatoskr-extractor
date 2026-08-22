@@ -29,6 +29,9 @@ use crate::retry::{
     transient_status,
 };
 
+#[cfg(any(test, feature = "test-support"))]
+mod test_support;
+
 mod admission;
 mod observations;
 mod retry;
@@ -626,32 +629,6 @@ impl SafeFetcher {
                 cache_outcome: CacheOutcome::Revalidated,
             },
         })
-    }
-
-    #[cfg(test)]
-    fn new_for_test(config: FetchConfig, store: BlobStore) -> Result<Self, SafeFetchError> {
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(Policy::none())
-            .user_agent("Ratatoskr-Extractor/0.1-test")
-            .build()
-            .map_err(SafeFetchError::Client)?;
-        Ok(Self {
-            client,
-            store,
-            admission: Admission::new(config.global_concurrency, config.per_host_concurrency),
-            resolver: None,
-            config,
-        })
-    }
-
-    #[cfg(test)]
-    fn fetch_for_test(
-        &self,
-        request: FetchRequest,
-    ) -> std::pin::Pin<Box<dyn Future<Output = Result<FetchResult, SafeFetchError>> + Send + '_>>
-    {
-        Box::pin(self.fetch_inner(request, false))
     }
 }
 

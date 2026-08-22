@@ -11,7 +11,7 @@ pub(super) fn validate_candidates(
         .iter()
         .filter(|candidate| candidate.selected)
         .count();
-    if candidates.len() == 3 && selected_count == selected {
+    if !candidates.is_empty() && selected_count == selected {
         Ok(())
     } else {
         Err(ConsumeError::InvalidRunState)

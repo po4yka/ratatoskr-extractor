@@ -22,6 +22,7 @@ ratatoskr-extractor-blob-store.workspace = true
 ratatoskr-extractor-core.workspace = true
 ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-extractor-eventing.workspace = true
+ratatoskr-extractor-pdf.workspace = true
 ratatoskr-extractor-persistence.workspace = true
 ratatoskr-extractor-safe-fetch.workspace = true
 ratatoskr-extractor-telemetry.workspace = true
@@ -39,11 +40,14 @@ ratatoskr-document-contracts.workspace = true
 ratatoskr-identifiers.workspace = true
 ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-extractor-eventing.workspace = true
+ratatoskr-extractor-pdf.workspace = true
 ratatoskr-extractor-persistence = { workspace = true, features = ["test-support"] }
+ratatoskr-extractor-safe-fetch = { workspace = true, features = ["test-support"] }
 ratatoskr-extractor-test-support.workspace = true
 async-nats.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
+http.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tower.workspace = true

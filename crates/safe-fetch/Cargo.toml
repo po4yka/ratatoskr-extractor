@@ -11,6 +11,9 @@ repository.workspace = true
 name = "extractor_safe_fetch"
 path = "src/lib.rs"
 
+[features]
+test-support = []
+
 [dependencies]
 ratatoskr-extractor-blob-store.workspace = true
 ratatoskr-extractor-core.workspace = true

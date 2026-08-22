@@ -6,6 +6,6 @@ mod config;
 
 pub use config::{
     AdminConfig, BlobConfig, BusConfig, ConfigError, ConfigViolation, DatabaseConfig,
-    ExtractorConfig, FetchConfig, LogFormat, OtlpConfig, ParserConfig, ShutdownConfig,
+    ExtractorConfig, FetchConfig, LogFormat, OtlpConfig, ParserConfig, PdfConfig, ShutdownConfig,
     TelemetryConfig, config_figment, load, load_from,
 };

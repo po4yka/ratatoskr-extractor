@@ -224,7 +224,14 @@ async fn quality_rejection_persists_evidence_without_document_event()
         last_modified: None,
         raw_blob: &raw,
     };
-    reject_quality(database.database.pool(), run.run_id, &fetch, &candidates).await?;
+    reject_quality(
+        database.database.pool(),
+        run.run_id,
+        &fetch,
+        &candidates,
+        "quality",
+    )
+    .await?;
 
     let facts: (i64, i64, i64, i64, i64, String) = sqlx::query_as(
         "select

@@ -453,17 +453,21 @@ pub async fn complete_document(
     Ok(Completion::Applied)
 }
 
-/// Records a bounded quality failure.
+/// Records a bounded quality failure under the extraction path's explicit failure class.
 ///
 /// # Errors
 ///
-/// Returns [`ConsumeError`] when terminal persistence fails.
+/// Returns [`ConsumeError`] when the class is invalid or terminal persistence fails.
 pub async fn reject_quality(
     pool: &PgPool,
     run_id: uuid::Uuid,
     fetch: &CompletedFetch<'_>,
     candidates: &[CandidateDecision],
+    failure_class: &str,
 ) -> Result<Completion, ConsumeError> {
+    if failure_class.is_empty() || failure_class.len() > 64 {
+        return Err(ConsumeError::InvalidRunState);
+    }
     if fetch.raw_blob.owner_service.as_str() != PRODUCER
         || !matches!(
             fetch.raw_blob.digest.algorithm,
@@ -479,11 +483,12 @@ pub async fn reject_quality(
     let context = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, uuid::Uuid, String)>(
         "update extractor.extraction_runs
             set status = 'failed', completed_at = transaction_timestamp(),
-                last_error_class = 'quality', claimed_until = null, claimed_by = null
+                last_error_class = $2, claimed_until = null, claimed_by = null
           where run_id = $1 and status = 'running'
           returning command_id, operation_id, owner_id, correlation_id",
     )
     .bind(run_id)
+    .bind(failure_class)
     .fetch_optional(&mut *transaction)
     .await?
     .map(
@@ -669,6 +674,7 @@ async fn queue_run(
         .normalized()
         .host_str()
         .ok_or(ConsumeError::InvalidUrlScheme)?;
+    let route = classify(&normalized);
     let source_id = sqlx::query_scalar::<_, uuid::Uuid>(
         "insert into extractor.sources
              (source_id, owner_id, original_url, normalized_url, canonical_url, host,
@@ -683,7 +689,7 @@ async fn queue_run(
     .bind(normalized.original())
     .bind(normalized_url)
     .bind(host)
-    .bind(route_name(classify(&normalized)))
+    .bind(route_name(route))
     .fetch_one(&mut **transaction)
     .await?;
 
@@ -691,7 +697,7 @@ async fn queue_run(
         "insert into extractor.extraction_runs
              (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
               status, policy_version, normalizer_version, parser_version, queued_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'queued', 'ssrf-v1', 'url-v1', 'html-v1',
+         values ($1, $2, $3, $4, $5, $6, $7, 'queued', 'ssrf-v1', 'url-v1', $8,
                  transaction_timestamp())",
     )
     .bind(uuid::Uuid::now_v7())
@@ -701,9 +707,18 @@ async fn queue_run(
     .bind(command.correlation_id.to_string())
     .bind(source_id)
     .bind(DocumentId::new_v7().0)
+    .bind(parser_version(route))
     .execute(&mut **transaction)
     .await?;
     Ok(())
+}
+
+/// Names the parser generation expected for a classified source at intake time.
+const fn parser_version(route: SourceRoute) -> &'static str {
+    match route {
+        SourceRoute::Pdf => "pdf-v1",
+        _ => "html-v1",
+    }
 }
 
 async fn enqueue_queued_report(

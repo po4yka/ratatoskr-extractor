@@ -2,8 +2,10 @@
 
 use std::path::Path;
 
-use extractor_core::{ExtractorConfig, load};
+use extractor_core::{ExtractorConfig, load, load_from};
+use figment::Figment;
 use figment::Jail;
+use figment::providers::Serialized;
 use secrecy::ExposeSecret as _;
 
 #[test]
@@ -59,5 +61,24 @@ fn invalid_environment_is_reported_without_its_value() -> Result<(), figment::Er
             Ok(())
         })?;
     }
+    Ok(())
+}
+
+#[test]
+fn pdf_defaults_are_bounded_and_overridable() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert_eq!(config.pdf.max_input_bytes, 50 * 1_024 * 1_024);
+    assert_eq!(config.pdf.max_pages, 1_000);
+    assert_eq!(config.pdf.max_text_bytes, 8 * 1_024 * 1_024);
+
+    let base = Figment::from(Serialized::defaults(ExtractorConfig::built_in(Path::new(
+        "/var/lib/ratatoskr-extractor/blobs",
+    ))))
+    .merge((
+        "database.url",
+        "postgres://extractor:extractor@127.0.0.1:5434/extractor",
+    ));
+    let overridden = load_from(&base.merge(("pdf.max_pages", 7_u64)))?;
+    assert_eq!(overridden.pdf.max_pages, 7);
     Ok(())
 }

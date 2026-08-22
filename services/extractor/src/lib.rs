@@ -2,6 +2,10 @@
 
 //! Process composition for Ratatoskr Extractor.
 
+mod pipeline;
+
+pub use pipeline::{ProcessError, process_run};
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::time::Duration;

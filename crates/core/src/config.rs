@@ -25,6 +25,8 @@ pub struct ExtractorConfig {
     pub fetch: FetchConfig,
     /// Bounded parse-once limits.
     pub parser: ParserConfig,
+    /// Bounded direct PDF limits.
+    pub pdf: PdfConfig,
     /// Bounded process shutdown.
     pub shutdown: ShutdownConfig,
     /// Logging and trace export.
@@ -86,6 +88,18 @@ pub struct ParserConfig {
     pub max_input_bytes: usize,
     /// Maximum nodes in one parsed DOM.
     pub max_dom_nodes: usize,
+}
+
+/// Direct PDF resource ceilings.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PdfConfig {
+    /// Maximum verified PDF bytes admitted to the parser.
+    pub max_input_bytes: usize,
+    /// Maximum pages accepted from the page tree.
+    pub max_pages: usize,
+    /// Maximum accumulated extracted text bytes.
+    pub max_text_bytes: usize,
 }
 
 /// Bounded network retrieval configuration.
@@ -218,6 +232,11 @@ impl ExtractorConfig {
             parser: ParserConfig {
                 max_input_bytes: 50 * 1_024 * 1_024,
                 max_dom_nodes: 250_000,
+            },
+            pdf: PdfConfig {
+                max_input_bytes: 50 * 1_024 * 1_024,
+                max_pages: 1_000,
+                max_text_bytes: 8 * 1_024 * 1_024,
             },
             shutdown: ShutdownConfig { grace_seconds: 25 },
             telemetry: TelemetryConfig {
