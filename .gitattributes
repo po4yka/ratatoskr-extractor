@@ -4,3 +4,7 @@
 # every platform, so a checkout on Windows cannot introduce CRLF that the first code commit then
 # silently rewrites.
 * text=auto eol=lf
+
+# PDF fixtures are binary; git text detection misreads RC4 ciphertext streams as text and
+# would otherwise flag their 0x0D bytes as forbidden CR.
+*.pdf binary
