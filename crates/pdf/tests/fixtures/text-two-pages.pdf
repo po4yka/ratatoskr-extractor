@@ -1,0 +1,62 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Title (Direct Extraction Fixture) /Producer (ratatoskr generate.py) >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<<  /Length 208 >>
+stream
+BT
+/F1 12 Tf 18 TL
+1 0 0 1 72 720 Tm
+(Ratatoskr direct extraction fixture.) Tj
+T*
+(The first page carries deterministic prose for the parser.) Tj
+T*
+(Un texte de contrÙle avec accents franÁais stables.) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<<  /Length 150 >>
+stream
+BT
+/F1 12 Tf 18 TL
+1 0 0 1 72 720 Tm
+(Second page follows the first in the page tree.) Tj
+T*
+(Reading order must keep this page after page one.) Tj
+ET
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000217 00000 n 
+0000000314 00000 n 
+0000000440 00000 n 
+0000000700 00000 n 
+0000000826 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R /Info 3 0 R /ID [<72617461746f736b722d666978747572652d69642d3031> <72617461746f736b722d666978747572652d69642d3031>] >>
+startxref
+1028
+%%EOF

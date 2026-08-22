@@ -207,9 +207,56 @@ pub fn from_html(
 }
 
 fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateDecision {
-    let text_characters = candidate.blocks.iter().map(block_text_len).sum::<usize>();
-    let paragraph_count = candidate
-        .blocks
+    let (metrics, score, accepted, reasons) = score_blocks(
+        &candidate.blocks,
+        candidate.link_characters,
+        candidate.boilerplate_characters,
+        title,
+    );
+    CandidateDecision {
+        strategy: candidate.strategy.as_str().to_owned(),
+        blocks: candidate.blocks.clone(),
+        evaluator_version: "quality_v1",
+        metrics,
+        score,
+        accepted,
+        reasons,
+        selected: false,
+    }
+}
+
+/// Scores plain text blocks with the shared deterministic evaluator.
+///
+/// Non-DOM extraction paths (direct PDF today, rendered DOM later) reuse the same quality
+/// components and thresholds as HTML candidates. Extracted plain text carries no link or
+/// boilerplate markup, so those exclusions are zero.
+#[must_use]
+pub fn evaluate_plain_text(
+    strategy: &str,
+    blocks: &[DocumentBlock],
+    title: Option<&str>,
+) -> CandidateDecision {
+    let (metrics, score, accepted, reasons) = score_blocks(blocks, 0, 0, title);
+    CandidateDecision {
+        strategy: strategy.to_owned(),
+        blocks: blocks.to_vec(),
+        evaluator_version: "quality_v1",
+        metrics,
+        score,
+        accepted,
+        reasons,
+        selected: false,
+    }
+}
+
+fn score_blocks(
+    blocks: &[DocumentBlock],
+    link_characters: usize,
+    boilerplate_characters: usize,
+    title: Option<&str>,
+) -> (QualityMetrics, u16, bool, Vec<QualityReason>) {
+    let text_characters = blocks.iter().map(block_text_len).sum::<usize>();
+    let paragraph_count = blocks
         .iter()
         .filter(|block| matches!(block, DocumentBlock::Paragraph { .. }))
         .count();
@@ -218,9 +265,9 @@ fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateD
         paragraph_count: u16::try_from(paragraph_count).map_or(u16::MAX, std::convert::identity),
         text_volume: component(text_characters, 300, 300),
         paragraph_distribution: component(paragraph_count, 4, 200),
-        non_link_share: share(text_characters, candidate.link_characters, 200),
-        non_boilerplate_share: share(text_characters, candidate.boilerplate_characters, 200),
-        title_agreement: u16::from(title_matches(&candidate.blocks, title)) * 100,
+        non_link_share: share(text_characters, link_characters, 200),
+        non_boilerplate_share: share(text_characters, boilerplate_characters, 200),
+        title_agreement: u16::from(title_matches(blocks, title)) * 100,
     };
     let score = metrics
         .text_volume
@@ -241,16 +288,7 @@ fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateD
         }
         reasons
     };
-    CandidateDecision {
-        strategy: candidate.strategy.as_str().to_owned(),
-        blocks: candidate.blocks.clone(),
-        evaluator_version: "quality_v1",
-        metrics,
-        score,
-        accepted,
-        reasons,
-        selected: false,
-    }
+    (metrics, score, accepted, reasons)
 }
 
 fn winner(decisions: &[CandidateDecision], accepted_only: bool) -> Option<&CandidateDecision> {
