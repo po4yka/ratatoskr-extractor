@@ -203,7 +203,6 @@ const REDDIT_JSON: &[u8] =
     include_bytes!("../../../crates/providers/tests/fixtures/reddit-post.json");
 const REDDIT_CHALLENGE: &[u8] =
     include_bytes!("../../../crates/providers/tests/fixtures/reddit-challenge.html");
-const HN_JSON: &[u8] = include_bytes!("../../../crates/providers/tests/fixtures/hn-story.json");
 
 #[tokio::test]
 async fn claimed_runs_carry_classification() -> Result<(), Box<dyn std::error::Error>> {
