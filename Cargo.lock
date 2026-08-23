@@ -2648,6 +2648,7 @@ dependencies = [
  "ratatoskr-extractor-eventing",
  "ratatoskr-extractor-pdf",
  "ratatoskr-extractor-persistence",
+ "ratatoskr-extractor-providers",
  "ratatoskr-extractor-safe-fetch",
  "ratatoskr-extractor-telemetry",
  "ratatoskr-extractor-test-support",

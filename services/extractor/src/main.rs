@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use extractor_blob_store::BlobStore;
-use extractor_core::{ExtractorConfig, ParserConfig, PdfConfig};
+use extractor_core::{ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig};
 use extractor_eventing::{NatsPublisher, claim_queued_run, run_command_consumer, run_outbox_once};
 use extractor_persistence::Database;
 use extractor_safe_fetch::SafeFetcher;
@@ -127,6 +127,7 @@ async fn run_initialized(
         store,
         config.parser.clone(),
         config.pdf.clone(),
+        config.providers.clone(),
         config.bus.worker_lease_seconds,
         config.bus.poll_interval_ms,
         admission.clone(),
@@ -223,6 +224,7 @@ async fn worker_loop(
     store: BlobStore,
     parser: ParserConfig,
     pdf: PdfConfig,
+    providers: ProvidersConfig,
     lease_seconds: i32,
     poll_interval_ms: u64,
     admission: AdmissionController,
@@ -247,7 +249,7 @@ async fn worker_loop(
         tokio::select! {
             biased;
             () = forced.cancelled() => {}
-            result = process_run(&pool, &fetcher, &store, &parser, &pdf, &run) => result?,
+            result = process_run(&pool, &fetcher, &store, &parser, &pdf, &providers, &run) => result?,
         }
         drop(permit);
     }

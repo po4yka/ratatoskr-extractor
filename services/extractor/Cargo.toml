@@ -24,6 +24,7 @@ ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-extractor-eventing.workspace = true
 ratatoskr-extractor-pdf.workspace = true
 ratatoskr-extractor-persistence.workspace = true
+ratatoskr-extractor-providers.workspace = true
 ratatoskr-extractor-safe-fetch.workspace = true
 ratatoskr-extractor-telemetry.workspace = true
 axum.workspace = true
@@ -37,6 +38,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 ratatoskr-document-contracts.workspace = true
+ratatoskr-extractor-providers.workspace = true
 ratatoskr-identifiers.workspace = true
 ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-extractor-eventing.workspace = true

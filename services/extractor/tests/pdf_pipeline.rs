@@ -199,6 +199,12 @@ async fn pdf_classified_run_records_pdf_parser_version() -> Result<(), Box<dyn s
     Ok(())
 }
 
+const REDDIT_JSON: &[u8] =
+    include_bytes!("../../../crates/providers/tests/fixtures/reddit-post.json");
+const REDDIT_CHALLENGE: &[u8] =
+    include_bytes!("../../../crates/providers/tests/fixtures/reddit-challenge.html");
+const HN_JSON: &[u8] = include_bytes!("../../../crates/providers/tests/fixtures/hn-story.json");
+
 #[tokio::test]
 async fn claimed_runs_carry_classification() -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
@@ -215,6 +221,135 @@ async fn claimed_runs_carry_classification() -> Result<(), Box<dyn std::error::E
     assert_eq!(
         run.classification, "hacker_news",
         "the claim must carry the source classification"
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn reddit_run_completes_from_json() -> Result<(), Box<dyn std::error::Error>> {
+    let server = ScriptedServer::start(vec![
+        ScriptedResponse::chunks([bytes::Bytes::from_static(REDDIT_JSON)]).with_header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        ),
+    ])
+    .await?;
+    let database = TestDatabase::create().await?;
+    let root = TemporaryBlobRoot::create().await?;
+    let store = BlobStore::new(root.path());
+    let pool = database.database.pool();
+    let mut config = ExtractorConfig::built_in(root.path());
+    config.fetch.allowed_ports = vec![server.port()];
+    config.fetch.total_timeout_ms = 10_000;
+    let fetcher = SafeFetcher::new_for_test(config.fetch.clone(), store.clone())?;
+
+    // The mapped address keeps the production host, so the hermetic test drives the provider
+    // boundary directly with its loopback equivalent.
+    let address = server
+        .uri("/r/fixturerust/comments/abc123/deterministic_extraction_fixture_post/.json")
+        .replace("127.0.0.1", "localhost");
+    queue_direct(
+        pool,
+        "https://www.reddit.com/r/fixturerust/comments/abc123/deterministic_extraction_fixture_post/",
+        "reddit",
+    )
+    .await?;
+    let run = claim_queued_run(pool, "test-worker", 60)
+        .await?
+        .ok_or("the queued run did not lease")?;
+
+    extractor_service::_complete_provider_for_test(
+        pool,
+        &store,
+        &config.providers,
+        &fetcher,
+        extractor_providers::SourceRoute::Reddit,
+        &address,
+        &run,
+    )
+    .await?;
+
+    let facts: (String, Option<String>, i64, i64, i64) = sqlx::query_as(
+        "select
+            r.status,
+            r.last_error_class,
+            (select count(*) from extractor.candidates c where c.run_id = r.run_id and c.selected
+                and c.strategy = 'reddit_post'),
+            (select count(*) from extractor.artifacts a where a.run_id = r.run_id
+                and a.kind = 'document_ir'),
+            (select count(*) from extractor.outbox_events o
+                where o.subject = 'evt.content.document.extracted.v1')
+           from extractor.extraction_runs r where r.run_id = $1",
+    )
+    .bind(run.run_id)
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(facts.0, "succeeded");
+    assert_eq!(facts.1, None);
+    assert_eq!(facts.2, 1, "one selected reddit_post candidate");
+    assert_eq!(facts.3, 1);
+    assert_eq!(facts.4, 1);
+    assert_eq!(
+        server.request_count(),
+        1,
+        "the native representation is fetched exactly once"
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn provider_non_json_fails_explicitly() -> Result<(), Box<dyn std::error::Error>> {
+    let server = ScriptedServer::start(vec![
+        ScriptedResponse::chunks([bytes::Bytes::from_static(REDDIT_CHALLENGE)]).with_header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/html"),
+        ),
+    ])
+    .await?;
+    let database = TestDatabase::create().await?;
+    let root = TemporaryBlobRoot::create().await?;
+    let store = BlobStore::new(root.path());
+    let pool = database.database.pool();
+    let mut config = ExtractorConfig::built_in(root.path());
+    config.fetch.allowed_ports = vec![server.port()];
+    let fetcher = SafeFetcher::new_for_test(config.fetch.clone(), store.clone())?;
+
+    let address = server
+        .uri("/r/fixturerust/comments/abc123/deterministic_extraction_fixture_post/.json")
+        .replace("127.0.0.1", "localhost");
+    queue_direct(
+        pool,
+        "https://www.reddit.com/r/fixturerust/comments/abc123/deterministic_extraction_fixture_post/",
+        "reddit",
+    )
+    .await?;
+    let run = claim_queued_run(pool, "test-worker", 60)
+        .await?
+        .ok_or("the queued run did not lease")?;
+
+    extractor_service::_complete_provider_for_test(
+        pool,
+        &store,
+        &config.providers,
+        &fetcher,
+        extractor_providers::SourceRoute::Reddit,
+        &address,
+        &run,
+    )
+    .await?;
+
+    let outcome: (String, Option<String>) = sqlx::query_as(
+        "select status, last_error_class from extractor.extraction_runs where run_id = $1",
+    )
+    .bind(run.run_id)
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(
+        outcome,
+        ("failed".to_owned(), Some("provider_response".to_owned())),
+        "an anti-bot challenge must fail as a typed provider response"
     );
     database.cleanup().await?;
     Ok(())
@@ -331,7 +466,16 @@ async fn process_pdf_run(
     config: &ExtractorConfig,
     run: &QueuedRun,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    extractor_service::process_run(pool, fetcher, store, &config.parser, &config.pdf, run).await?;
+    extractor_service::process_run(
+        pool,
+        fetcher,
+        store,
+        &config.parser,
+        &config.pdf,
+        &config.providers,
+        run,
+    )
+    .await?;
     Ok(())
 }
 

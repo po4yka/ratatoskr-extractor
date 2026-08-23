@@ -4,7 +4,9 @@
 
 mod pipeline;
 
-pub use pipeline::{ProcessError, process_run};
+pub use pipeline::{
+    ProcessError, complete_provider_for_test as _complete_provider_for_test, process_run,
+};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
