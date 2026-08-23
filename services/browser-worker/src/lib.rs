@@ -119,8 +119,14 @@ pub async fn ensure_render_stream(
         .get_stream(COMMAND_STREAM)
         .await
         .map_err(infrastructure)?;
+    // The fleet event stream exists in production; a fresh deployment (and CI) creates it here.
     let _ = context
-        .get_stream(EVENTS_STREAM)
+        .get_or_create_stream(jetstream::stream::Config {
+            name: EVENTS_STREAM.to_owned(),
+            subjects: vec!["evt.content.render.>".to_owned()],
+            max_age: std::time::Duration::from_hours(24),
+            ..jetstream::stream::Config::default()
+        })
         .await
         .map_err(infrastructure)?;
     let _ = context
