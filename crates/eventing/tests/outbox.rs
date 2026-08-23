@@ -86,6 +86,7 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
     let publisher = NatsPublisher::connect(&nats_url()).await?;
     publisher.ensure_event_stream().await?;
     let outcome = run_outbox_once(database.database.pool(), &publisher, "test", 10).await?;
+    eprintln!("DIAG-CI second outcome={outcome:?}");
     assert_eq!(outcome.published, 1);
     let settled: bool = sqlx::query_scalar(
         "select attempts = 1 and published_at is not null and claimed_until is null
