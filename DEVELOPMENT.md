@@ -3,12 +3,13 @@
 > Status: Active
 > Last reviewed: 2026-08-21
 
-The Rust workspace implements plan items 1 through 6 plus the direct PDF half of item 7:
-foundation, URL/SSRF policy, bounded fetch, parse-once HTML candidates, deterministic quality
-selection, Document IR, PostgreSQL/JetStream inbox/outbox integration, and bounded direct PDF
-extraction into the same Document IR. Provider/source adapters and the browser worker remain
-deferred. PDFs without a text layer are recorded as an explicit degraded outcome; OCR stays out of
-scope.
+The Rust workspace implements plan items 1 through 6 plus both halves of item 7: foundation,
+URL/SSRF policy, bounded fetch, parse-once HTML candidates, deterministic quality selection,
+Document IR, PostgreSQL/JetStream inbox/outbox integration, bounded direct PDF extraction, and the
+Hacker News and Reddit provider adapters that fetch each source's native JSON representation once.
+The browser worker remains deferred. PDFs without a text layer are recorded as an explicit
+degraded outcome; OCR stays out of scope. YouTube transcripts and the delegated platform routes
+(GitHub, X, Instagram, Threads, Telegram) remain unimplemented here.
 
 ## Toolchain and gate
 
