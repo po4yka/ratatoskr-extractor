@@ -717,6 +717,7 @@ async fn queue_run(
 const fn parser_version(route: SourceRoute) -> &'static str {
     match route {
         SourceRoute::Pdf => "pdf-v1",
+        SourceRoute::HackerNews | SourceRoute::Reddit => "providers-v1",
         _ => "html-v1",
     }
 }

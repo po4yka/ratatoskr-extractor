@@ -166,6 +166,17 @@ async fn pdf_classified_run_records_pdf_parser_version() -> Result<(), Box<dyn s
         ))?,
     )
     .await?;
+    for url in [
+        "https://news.ycombinator.com/item?id=900",
+        "https://www.reddit.com/r/fixturerust/comments/abc123/fixture/",
+    ] {
+        consume_capture(
+            pool,
+            "cmd.content.capture.requested.v1",
+            &serde_json::to_vec(&capture_command(uuid::Uuid::now_v7(), url))?,
+        )
+        .await?;
+    }
 
     let versions: Vec<(String, String)> = sqlx::query_as(
         "select s.classification, r.parser_version
@@ -179,7 +190,9 @@ async fn pdf_classified_run_records_pdf_parser_version() -> Result<(), Box<dyn s
         versions,
         vec![
             ("generic_web".to_owned(), "html-v1".to_owned()),
+            ("hacker_news".to_owned(), "providers-v1".to_owned()),
             ("pdf".to_owned(), "pdf-v1".to_owned()),
+            ("reddit".to_owned(), "providers-v1".to_owned()),
         ]
     );
     database.cleanup().await?;

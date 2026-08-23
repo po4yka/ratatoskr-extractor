@@ -82,3 +82,21 @@ fn pdf_defaults_are_bounded_and_overridable() -> Result<(), Box<dyn std::error::
     assert_eq!(overridden.pdf.max_pages, 7);
     Ok(())
 }
+
+#[test]
+fn provider_defaults_are_bounded_and_overridable() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert_eq!(config.providers.max_input_bytes, 8 * 1_024 * 1_024);
+    assert_eq!(config.providers.max_blocks, 2_000);
+
+    let base = Figment::from(Serialized::defaults(ExtractorConfig::built_in(Path::new(
+        "/var/lib/ratatoskr-extractor/blobs",
+    ))))
+    .merge((
+        "database.url",
+        "postgres://extractor:extractor@127.0.0.1:5434/extractor",
+    ));
+    let overridden = load_from(&base.merge(("providers.max_blocks", 11_u64)))?;
+    assert_eq!(overridden.providers.max_blocks, 11);
+    Ok(())
+}

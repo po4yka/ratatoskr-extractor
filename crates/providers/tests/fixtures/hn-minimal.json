@@ -1,0 +1,15 @@
+{
+  "author": "fixture-author",
+  "children": [],
+  "created_at": "2026-01-05T09:30:00.000Z",
+  "created_at_i": 1767605400,
+  "id": 901,
+  "options": [],
+  "parent_id": null,
+  "points": 7,
+  "story_id": 901,
+  "text": null,
+  "title": "Link-only fixture story without body text",
+  "type": "story",
+  "url": "https://example.com/link-only"
+}

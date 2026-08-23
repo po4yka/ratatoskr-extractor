@@ -1,0 +1,62 @@
+{
+  "author": "fixture-author",
+  "children": [
+    {
+      "author": "alice",
+      "children": [],
+      "created_at": "2026-01-05T10:00:00.000Z",
+      "created_at_i": 1767607200,
+      "id": 1001,
+      "options": [],
+      "parent_id": 900,
+      "points": null,
+      "story_id": 900,
+      "text": "First comment with &#34;quotes&#34; and <i>italics</i> survives conversion.",
+      "title": null,
+      "type": "comment",
+      "url": null
+    },
+    {
+      "author": "bob",
+      "children": [
+        {
+          "author": "carol",
+          "children": [],
+          "created_at": "2026-01-05T11:00:00.000Z",
+          "created_at_i": 1767610800,
+          "id": 1003,
+          "options": [],
+          "parent_id": 1002,
+          "points": null,
+          "story_id": 900,
+          "text": "Nested reply keeps pre-order position.",
+          "title": null,
+          "type": "comment",
+          "url": null
+        }
+      ],
+      "created_at": "2026-01-05T10:30:00.000Z",
+      "created_at_i": 1767609000,
+      "id": 1002,
+      "options": [],
+      "parent_id": 900,
+      "points": null,
+      "story_id": 900,
+      "text": null,
+      "title": null,
+      "type": "comment",
+      "url": null
+    }
+  ],
+  "created_at": "2026-01-05T09:30:00.000Z",
+  "created_at_i": 1767605400,
+  "id": 900,
+  "options": [],
+  "parent_id": null,
+  "points": 42,
+  "story_id": 900,
+  "text": null,
+  "title": "Fixture story about deterministic provider extraction",
+  "type": "story",
+  "url": "https://example.com/article"
+}

@@ -2596,6 +2596,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatoskr-extractor-providers"
+version = "0.1.0"
+dependencies = [
+ "ratatoskr-document-contracts",
+ "ratatoskr-extractor-document-ir",
+ "ratatoskr-identifiers",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
 name = "ratatoskr-extractor-safe-fetch"
 version = "0.1.0"
 dependencies = [

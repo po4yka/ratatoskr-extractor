@@ -27,6 +27,8 @@ pub struct ExtractorConfig {
     pub parser: ParserConfig,
     /// Bounded direct PDF limits.
     pub pdf: PdfConfig,
+    /// Bounded provider adapter limits.
+    pub providers: ProvidersConfig,
     /// Bounded process shutdown.
     pub shutdown: ShutdownConfig,
     /// Logging and trace export.
@@ -88,6 +90,16 @@ pub struct ParserConfig {
     pub max_input_bytes: usize,
     /// Maximum nodes in one parsed DOM.
     pub max_dom_nodes: usize,
+}
+
+/// Provider adapter resource ceilings.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProvidersConfig {
+    /// Maximum provider payload bytes admitted to an adapter.
+    pub max_input_bytes: usize,
+    /// Maximum Document IR blocks produced by one adapter run.
+    pub max_blocks: usize,
 }
 
 /// Direct PDF resource ceilings.
@@ -237,6 +249,10 @@ impl ExtractorConfig {
                 max_input_bytes: 50 * 1_024 * 1_024,
                 max_pages: 1_000,
                 max_text_bytes: 8 * 1_024 * 1_024,
+            },
+            providers: ProvidersConfig {
+                max_input_bytes: 8 * 1_024 * 1_024,
+                max_blocks: 2_000,
             },
             shutdown: ShutdownConfig { grace_seconds: 25 },
             telemetry: TelemetryConfig {

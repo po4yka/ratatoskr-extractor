@@ -1,0 +1,45 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "after": null,
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "author": "fixture_author",
+            "id": "abc123",
+            "permalink": "/r/fixturerust/comments/abc123/deterministic_extraction_fixture_post/",
+            "selftext": "Body text of the synthetic fixture post survives conversion.",
+            "subreddit": "fixturerust",
+            "title": "Deterministic extraction fixture post"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "after": null,
+      "children": [
+        {
+          "kind": "t1",
+          "data": {
+            "author": "replier",
+            "body": "Top-level comment body.",
+            "id": "c1"
+          }
+        },
+        {
+          "kind": "t1",
+          "data": {
+            "author": "nested",
+            "body": "Nested reply body.",
+            "id": "c2"
+          }
+        }
+      ]
+    }
+  }
+]
