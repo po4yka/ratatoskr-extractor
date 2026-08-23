@@ -100,3 +100,25 @@ fn provider_defaults_are_bounded_and_overridable() -> Result<(), Box<dyn std::er
     assert_eq!(overridden.providers.max_blocks, 11);
     Ok(())
 }
+
+#[test]
+fn rendering_is_off_by_default_and_budgets_parse() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert!(
+        !config.render.enabled,
+        "escalation must stay inert by default"
+    );
+    assert_eq!(config.render.navigation_timeout_ms, 15_000);
+    assert_eq!(config.render.total_timeout_ms, 45_000);
+
+    let base = Figment::from(Serialized::defaults(ExtractorConfig::built_in(Path::new(
+        "/var/lib/ratatoskr-extractor/blobs",
+    ))))
+    .merge((
+        "database.url",
+        "postgres://extractor:extractor@127.0.0.1:5434/extractor",
+    ));
+    let overridden = load_from(&base.merge(("render.enabled", true)))?;
+    assert!(overridden.render.enabled);
+    Ok(())
+}

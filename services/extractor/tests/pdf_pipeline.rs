@@ -1,5 +1,6 @@
 //! Direct PDF runs through fetch, completion, and typed failure classes.
 
+use async_nats::jetstream;
 use extractor_blob_store::BlobStore;
 use extractor_core::ExtractorConfig;
 use extractor_eventing::{
@@ -10,6 +11,7 @@ use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
+use extractor_url_routing::RoutingPolicy;
 use futures_util::stream;
 use ratatoskr_document_contracts::DocumentAddress;
 use ratatoskr_identifiers::DocumentId;
@@ -381,7 +383,16 @@ async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std
         .await?
         .ok_or("the queued run did not lease")?;
 
-    process_pdf_run(pool, &fetcher, &store, &config, &run).await?;
+    let nats_client = async_nats::connect(&nats_url()).await?;
+    process_pdf_run(
+        pool,
+        &fetcher,
+        &store,
+        &config,
+        &jetstream::new(nats_client),
+        &run,
+    )
+    .await?;
 
     let facts: (String, Option<String>, i64, i64, i64) = sqlx::query_as(
         "select
@@ -440,7 +451,16 @@ async fn pdf_failure_classes_reach_terminal_state() -> Result<(), Box<dyn std::e
             .await?
             .ok_or("the queued run did not lease")?;
 
-        process_pdf_run(pool, &fetcher, &store, &config, &run).await?;
+        let nats_client = async_nats::connect(&nats_url()).await?;
+        process_pdf_run(
+            pool,
+            &fetcher,
+            &store,
+            &config,
+            &jetstream::new(nats_client),
+            &run,
+        )
+        .await?;
 
         let outcome: (String, Option<String>) = sqlx::query_as(
             "select status, last_error_class from extractor.extraction_runs where run_id = $1",
@@ -463,6 +483,7 @@ async fn process_pdf_run(
     fetcher: &SafeFetcher,
     store: &BlobStore,
     config: &ExtractorConfig,
+    bus: &async_nats::jetstream::Context,
     run: &QueuedRun,
 ) -> Result<(), Box<dyn std::error::Error>> {
     extractor_service::process_run(
@@ -472,6 +493,8 @@ async fn process_pdf_run(
         &config.parser,
         &config.pdf,
         &config.providers,
+        &config.render,
+        bus,
         run,
     )
     .await?;
@@ -572,5 +595,135 @@ fn generous_limits() -> PdfParseLimits {
         max_input_bytes: 65_536,
         max_pages: 100,
         max_text_bytes: 1_048_576,
+    }
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test-only broker location is not process configuration"
+)]
+fn nats_url() -> String {
+    match std::env::var("EXTRACTOR_TEST_NATS_URL") {
+        Ok(value) => value,
+        Err(_) => "nats://127.0.0.1:4222".to_owned(),
+    }
+}
+
+#[tokio::test]
+async fn empty_shell_escalates_and_completes_from_rendered_dom()
+-> Result<(), Box<dyn std::error::Error>> {
+    const SHELL: &[u8] =
+        b"<html><body><div id=\"root\"></div><script src=\"/app.js\"></script></body></html>";
+    const RENDERED: &[u8] = b"<html><body><div id=\"root\"><p>Hydrated fixture content for the escalated run carries more than the threshold of deterministic prose so the shared evaluator accepts it.</p></div></body></html>";
+    let server = extractor_test_support::ScriptedServer::start(vec![
+        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(SHELL)])
+            .with_header(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("text/html"),
+            ),
+        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(RENDERED)])
+            .with_header(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("text/html"),
+            ),
+    ])
+    .await?;
+    let database = TestDatabase::create().await?;
+    let root = TemporaryBlobRoot::create().await?;
+    let worker_root = TemporaryBlobRoot::create().await?;
+    let store = BlobStore::new(root.path());
+    let pool = database.database.pool();
+    let nats_client = async_nats::connect(&nats_url()).await?;
+    let bus = jetstream::new(nats_client.clone());
+
+    let mut config = ExtractorConfig::built_in(root.path());
+    config.fetch.allowed_ports = vec![80, 443, server.port()];
+    config.render.enabled = true;
+    config.render.worker_blobs_root = worker_root.path().to_path_buf();
+    let fetcher = SafeFetcher::new_for_test(config.fetch.clone(), store.clone())?;
+
+    // The browser worker runs as an independent component against the same bus.
+    let chrome = chrome_bin_for_worker();
+    let worker_cancel = tokio_util::sync::CancellationToken::new();
+    let executor = browser_worker::ChromiumExecutor::launch_with_policy(
+        Some(chrome),
+        browser_worker::NavigationPolicy {
+            routing: RoutingPolicy {
+                max_url_length: 8_192,
+                allowed_ports: vec![80, 443, server.port()],
+            },
+            allow_loopback: true,
+        },
+    )
+    .await?;
+    let worker_settings = browser_worker::WorkerSettings {
+        nats_url: nats_url(),
+        blobs_root: worker_root.path().to_path_buf(),
+        durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
+        completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
+    };
+    let worker_task = tokio::spawn(browser_worker::run_render_consumer(
+        jetstream::new(nats_client.clone()),
+        worker_settings,
+        executor,
+        worker_cancel.clone(),
+    ));
+
+    // A hostname keeps the public literal-address policy applicable exactly as in production.
+    queue_direct(
+        pool,
+        &server.uri("/page").replace("127.0.0.1", "localhost"),
+        "generic_web",
+    )
+    .await?;
+    let run = claim_queued_run(pool, "test-worker", 60)
+        .await?
+        .ok_or("the queued run did not lease")?;
+
+    process_pdf_run(pool, &fetcher, &store, &config, &bus, &run).await?;
+
+    let class: Option<String> = sqlx::query_scalar(
+        "select last_error_class from extractor.extraction_runs where run_id = $1",
+    )
+    .bind(run.run_id)
+    .fetch_one(pool)
+    .await?;
+    eprintln!("DIAG-TEST escalate class={class:?}");
+
+    let facts: (String, i64, i64) = sqlx::query_as(
+        "select
+            r.status,
+            (select count(*) from extractor.artifacts a where a.run_id = r.run_id
+                and a.kind = 'document_ir'),
+            (select count(*) from extractor.outbox_events o
+                where o.subject = 'evt.content.document.extracted.v1')
+           from extractor.extraction_runs r where r.run_id = $1",
+    )
+    .bind(run.run_id)
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(facts.0, "succeeded");
+    assert_eq!(facts.1, 1);
+    assert_eq!(facts.2, 1);
+    assert_eq!(
+        server.request_count(),
+        2,
+        "the shell is fetched directly and the hydrated page by the worker"
+    );
+
+    worker_cancel.cancel();
+    worker_task.await??;
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test-only browser location is not process configuration"
+)]
+fn chrome_bin_for_worker() -> String {
+    match std::env::var("CHROME_BIN") {
+        Ok(value) => value,
+        Err(_) => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".to_owned(),
     }
 }

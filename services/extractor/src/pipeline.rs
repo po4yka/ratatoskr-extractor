@@ -1,11 +1,17 @@
 //! The per-run extraction pipeline shared by the worker loop and integration tests.
 
+use browser_worker::WorkerError;
 use extractor_blob_store::BlobStore;
-use extractor_core::{ParserConfig, PdfConfig, ProvidersConfig};
-use extractor_document_ir::{DocumentIrError, HtmlDocumentInput, ParseLimits, from_html};
-use extractor_eventing::{
-    CompletedFetch, complete_document, fail_run, reject_quality, store_document_ir,
+use extractor_core::{ParserConfig, PdfConfig, ProvidersConfig, RenderConfig};
+use extractor_document_ir::{
+    DocumentIrError, HtmlDocumentInput, HtmlExtraction, ParseLimits, from_html,
 };
+use extractor_eventing::{
+    CompletedFetch, RenderOutcome, RenderRequestError, complete_document, fail_run, reject_quality,
+    request_render, store_document_ir,
+};
+use render_job::RenderBudgets;
+
 use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_providers::{
     ProviderError, ProviderInput, ProviderLimits, SourceRoute, from_provider, provider_request,
@@ -68,6 +74,8 @@ pub async fn process_run(
     parser: &ParserConfig,
     pdf: &PdfConfig,
     providers: &ProvidersConfig,
+    render: &RenderConfig,
+    bus: &async_nats::jetstream::Context,
     run: &extractor_eventing::QueuedRun,
 ) -> Result<(), ProcessError> {
     // Provider routing happens before any fetch so a mapped provider run performs exactly one
@@ -93,7 +101,7 @@ pub async fn process_run(
         }
     };
     match fetched.media_type.as_str() {
-        "text/html" => complete_html(pool, store, parser, run, fetched).await,
+        "text/html" => complete_html(pool, store, parser, render, bus, run, fetched).await,
         "application/pdf" => complete_pdf(pool, store, pdf, run, fetched).await,
         _ => {
             fail_run(pool, run.run_id, "unsupported_media", false).await?;
@@ -107,6 +115,8 @@ async fn complete_html(
     pool: &sqlx::PgPool,
     store: &BlobStore,
     parser: &ParserConfig,
+    render: &RenderConfig,
+    bus: &async_nats::jetstream::Context,
     run: &extractor_eventing::QueuedRun,
     fetched: FetchResult,
 ) -> Result<(), ProcessError> {
@@ -120,6 +130,7 @@ async fn complete_html(
         }
     };
     let bytes = tokio::fs::read(source_path).await?;
+    let raw_html = bytes.clone();
     let address = DocumentAddress::parse(fetched.final_url.as_str())
         .map_err(|_| ProcessError::DocumentIdentity)?;
     let raw = fetched.artifact.clone();
@@ -146,6 +157,34 @@ async fn complete_html(
     let extraction = match document {
         Ok(extraction) => extraction,
         Err(DocumentIrError::LowQuality { candidates }) => {
+            // Deterministic escalation: only an empty-shell shape with rendering enabled may
+            // escalate, and only once — this branch has no escalation of its own.
+            let empty_shell = is_empty_shell(&raw_html)
+                && candidates.iter().all(|c| c.metrics.text_characters < 120);
+            if render.enabled && empty_shell {
+                match escalate_to_render(pool, store, render, bus, parser, run, &fetched).await? {
+                    Some(extraction) => {
+                        let ir_blob = store_document_ir(store, &extraction.document).await?;
+                        let fetch = completed_fetch(&fetched);
+                        complete_document(
+                            pool,
+                            run.run_id,
+                            &extraction.document,
+                            &ir_blob,
+                            &fetch,
+                            &extraction.candidates,
+                        )
+                        .await?;
+                        metrics::counter!(
+                            "ratatoskr_extractor_runs_total",
+                            "outcome" => "succeeded"
+                        )
+                        .increment(1);
+                        return Ok(());
+                    }
+                    None => {}
+                }
+            }
             let fetch = completed_fetch(&fetched);
             reject_quality(pool, run.run_id, &fetch, &candidates, "quality").await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
@@ -409,4 +448,106 @@ const fn fetch_retryable(error: &extractor_safe_fetch::SafeFetchError) -> bool {
             | extractor_safe_fetch::SafeFetchError::TimeoutReadIdle
             | extractor_safe_fetch::SafeFetchError::Overloaded
     )
+}
+
+/// Empty-shell evidence: hydration mount markers in bytes that yielded almost no text.
+fn is_empty_shell(raw_html: &[u8]) -> bool {
+    let haystack = String::from_utf8_lossy(raw_html);
+    ["id=\"root\"", "id=\"app\"", "__NEXT_DATA__"]
+        .iter()
+        .any(|marker| haystack.contains(marker))
+}
+
+async fn escalate_to_render(
+    pool: &sqlx::PgPool,
+    store: &BlobStore,
+    render: &RenderConfig,
+    bus: &async_nats::jetstream::Context,
+    parser: &ParserConfig,
+    run: &extractor_eventing::QueuedRun,
+    fetched: &FetchResult,
+) -> Result<Option<HtmlExtraction>, ProcessError> {
+    tracing::info!(run_id = %run.run_id, "empty shell detected; escalating to browser worker");
+    let command = render_job::RenderCommand {
+        render_id: uuid::Uuid::now_v7(),
+        operation_id: uuid::Uuid::now_v7(),
+        correlation_id: format!("run:{}", run.run_id),
+        tenant_user_id: uuid::Uuid::nil(),
+        url: run.url.clone(),
+        budgets: render_job::RenderBudgets {
+            navigation_timeout_ms: render.navigation_timeout_ms,
+            total_timeout_ms: render.total_timeout_ms,
+            max_dom_bytes: render.max_dom_bytes,
+        },
+    };
+    match extractor_eventing::request_render(bus, &command).await {
+        Ok(RenderOutcome::Completed(completed)) => {
+            let worker_store = BlobStore::new(&render.worker_blobs_root)
+                .with_owner("ratatoskr-browser-worker")
+                .map_err(ProcessError::Blob)?;
+            let path = worker_store.verify(&completed.dom).await?;
+            let rendered = tokio::fs::read(path).await?;
+            let address = DocumentAddress::parse(&completed.final_url)
+                .map_err(|_| ProcessError::DocumentIdentity)?;
+            let document_id = run.document_id;
+            let parse_limits = ParseLimits {
+                max_input_bytes: parser.max_input_bytes,
+                max_dom_nodes: parser.max_dom_nodes,
+            };
+            let parse_started = std::time::Instant::now();
+            let parsed = tokio::task::spawn_blocking(move || {
+                from_html(
+                    HtmlDocumentInput {
+                        document_id,
+                        source_address: address,
+                        source_blob: completed.dom.clone(),
+                        bytes: &rendered,
+                    },
+                    parse_limits,
+                )
+            })
+            .await?;
+            metrics::histogram!("ratatoskr_extractor_parse_duration_seconds")
+                .record(parse_started.elapsed().as_secs_f64());
+            match parsed {
+                Ok(extraction) => Ok(Some(extraction)),
+                Err(DocumentIrError::LowQuality { candidates }) => {
+                    let fetch = completed_fetch(fetched);
+                    reject_quality(pool, run.run_id, &fetch, &candidates, "quality").await?;
+                    metrics::counter!(
+                        "ratatoskr_extractor_runs_total",
+                        "outcome" => "failed"
+                    )
+                    .increment(1);
+                    Ok(None)
+                }
+                Err(error) => {
+                    tracing::warn!(run_id = %run.run_id, error = %error, "rendered DOM conversion failed");
+                    fail_run(pool, run.run_id, "parse", false).await?;
+                    metrics::counter!(
+                        "ratatoskr_extractor_runs_total",
+                        "outcome" => "failed"
+                    )
+                    .increment(1);
+                    Ok(None)
+                }
+            }
+        }
+        Ok(RenderOutcome::Failed(failed)) => {
+            fail_run(pool, run.run_id, failed.class.as_str(), false).await?;
+            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
+            Ok(None)
+        }
+        Err(RenderRequestError::Timeout) => {
+            fail_run(pool, run.run_id, "navigation_timeout", false).await?;
+            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
+            Ok(None)
+        }
+        Err(RenderRequestError::Transport(error)) => {
+            tracing::warn!(run_id = %run.run_id, error = %error, "render transport failed");
+            fail_run(pool, run.run_id, "fetch", true).await?;
+            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
+            Ok(None)
+        }
+    }
 }

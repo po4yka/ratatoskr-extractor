@@ -12,6 +12,7 @@ name = "extractor_eventing"
 path = "src/lib.rs"
 
 [dependencies]
+ratatoskr-render-job.workspace = true
 ratatoskr-document-contracts.workspace = true
 ratatoskr-error-contracts.workspace = true
 ratatoskr-extractor-blob-store.workspace = true

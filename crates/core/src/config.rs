@@ -29,6 +29,8 @@ pub struct ExtractorConfig {
     pub pdf: PdfConfig,
     /// Bounded provider adapter limits.
     pub providers: ProvidersConfig,
+    /// Browser escalation settings; rendering stays off unless enabled.
+    pub render: RenderConfig,
     /// Bounded process shutdown.
     pub shutdown: ShutdownConfig,
     /// Logging and trace export.
@@ -90,6 +92,22 @@ pub struct ParserConfig {
     pub max_input_bytes: usize,
     /// Maximum nodes in one parsed DOM.
     pub max_dom_nodes: usize,
+}
+
+/// Browser escalation settings.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RenderConfig {
+    /// Master switch; when false the extractor never publishes render commands.
+    pub enabled: bool,
+    /// Navigation budget written into render commands.
+    pub navigation_timeout_ms: u64,
+    /// Whole-render budget written into render commands.
+    pub total_timeout_ms: u64,
+    /// Maximum rendered DOM bytes accepted back from the worker.
+    pub max_dom_bytes: usize,
+    /// Root of the browser worker's owned blobs on the shared deployment device.
+    pub worker_blobs_root: std::path::PathBuf,
 }
 
 /// Provider adapter resource ceilings.
@@ -253,6 +271,13 @@ impl ExtractorConfig {
             providers: ProvidersConfig {
                 max_input_bytes: 8 * 1_024 * 1_024,
                 max_blocks: 2_000,
+            },
+            render: RenderConfig {
+                enabled: false,
+                navigation_timeout_ms: 15_000,
+                total_timeout_ms: 45_000,
+                max_dom_bytes: 8 * 1_024 * 1_024,
+                worker_blobs_root: "/var/lib/ratatoskr-browser-worker/blobs".to_owned().into(),
             },
             shutdown: ShutdownConfig { grace_seconds: 25 },
             telemetry: TelemetryConfig {

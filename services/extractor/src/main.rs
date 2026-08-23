@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use extractor_blob_store::BlobStore;
-use extractor_core::{ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig};
+use extractor_core::{ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig, RenderConfig};
 use extractor_eventing::{NatsPublisher, claim_queued_run, run_command_consumer, run_outbox_once};
 use extractor_persistence::Database;
 use extractor_safe_fetch::SafeFetcher;
@@ -97,6 +97,7 @@ async fn run_initialized(
     let background_cancel = CancellationToken::new();
     let server_cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
+    let bus_context = publisher.context().clone();
     tasks.spawn({
         let publisher = publisher.clone();
         let pool = database.pool().clone();
@@ -116,7 +117,7 @@ async fn run_initialized(
     ));
     tasks.spawn(dependency_loop(
         database.pool().clone(),
-        publisher,
+        publisher.clone(),
         health.clone(),
         config.bus.poll_interval_ms,
         background_cancel.child_token(),
@@ -128,6 +129,8 @@ async fn run_initialized(
         config.parser.clone(),
         config.pdf.clone(),
         config.providers.clone(),
+        config.render.clone(),
+        publisher.context().clone(),
         config.bus.worker_lease_seconds,
         config.bus.poll_interval_ms,
         admission.clone(),
@@ -225,6 +228,8 @@ async fn worker_loop(
     parser: ParserConfig,
     pdf: PdfConfig,
     providers: ProvidersConfig,
+    render: RenderConfig,
+    bus_context: async_nats::jetstream::Context,
     lease_seconds: i32,
     poll_interval_ms: u64,
     admission: AdmissionController,
@@ -249,7 +254,17 @@ async fn worker_loop(
         tokio::select! {
             biased;
             () = forced.cancelled() => {}
-            result = process_run(&pool, &fetcher, &store, &parser, &pdf, &providers, &run) => result?,
+            result = process_run(
+                &pool,
+                &fetcher,
+                &store,
+                &parser,
+                &pdf,
+                &providers,
+                &render,
+                &bus_context,
+                &run,
+            ) => result?,
         }
         drop(permit);
     }

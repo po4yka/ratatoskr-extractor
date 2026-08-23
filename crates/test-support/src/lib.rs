@@ -358,15 +358,6 @@ async fn respond(
     requests.lock().await.push(recorded);
     // Ordering: publish the recorded request before tests observe the count.
     request_count.fetch_add(1, Ordering::Release);
-    #[expect(clippy::disallowed_methods, reason = "temporary diagnostic")]
-    {
-        eprintln!(
-            "DIAG-SERVER {} -> status {} headers={:?}",
-            request.uri(),
-            script.status.as_u16(),
-            request.headers()
-        );
-    }
     request_notify.notify_waiters();
 
     if let Some(gate) = script.gate {

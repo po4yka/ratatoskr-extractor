@@ -250,12 +250,6 @@ async fn render_in_context(
         .content()
         .await
         .map_err(ExecutorError::BrowserUnavailable)?;
-    eprintln!(
-        "DIAG-EXEC dom len={} budget={} head={:?}",
-        dom.len(),
-        command.budgets.max_dom_bytes,
-        dom.chars().take(120).collect::<String>()
-    );
     if dom.len() > command.budgets.max_dom_bytes {
         return Err(ExecutorError::Budget(RenderFailureClass::SizeLimit));
     }
@@ -284,19 +278,6 @@ pub(crate) async fn install_interception(
 
     // The listener is registered before the domain is enabled so the first paused request is
     // never lost.
-    if let Ok(mut failed) = page
-        .event_listener::<chromiumoxide::cdp::browser_protocol::network::EventLoadingFailed>()
-        .await
-    {
-        tokio::spawn(async move {
-            while let Some(event) = failed.next().await {
-                eprintln!(
-                    "DIAG-EXEC load failed: {:?} canceled={:?}",
-                    event.error_text, event.canceled
-                );
-            }
-        });
-    }
     let mut paused = page
         .event_listener::<EventRequestPaused>()
         .await
@@ -353,4 +334,11 @@ fn is_heavy(event: &EventRequestPaused) -> bool {
         event.resource_type,
         ResourceType::Image | ResourceType::Font | ResourceType::Media
     )
+}
+
+impl crate::RenderExecutor for ChromiumExecutor {
+    async fn render(&self, command: &RenderCommand) -> Result<crate::RenderOutcome, WorkerError> {
+        let outcome = ChromiumExecutor::render(self, command).await?;
+        Ok(outcome)
+    }
 }

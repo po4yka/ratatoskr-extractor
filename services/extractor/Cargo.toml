@@ -16,15 +16,18 @@ name = "ratatoskr-extractor"
 path = "src/main.rs"
 
 [dependencies]
+async-nats.workspace = true
 ratatoskr-document-contracts.workspace = true
 ratatoskr-identifiers.workspace = true
 ratatoskr-extractor-blob-store.workspace = true
 ratatoskr-extractor-core.workspace = true
 ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-extractor-eventing.workspace = true
+ratatoskr-browser-worker.workspace = true
 ratatoskr-extractor-pdf.workspace = true
 ratatoskr-extractor-persistence.workspace = true
 ratatoskr-extractor-providers.workspace = true
+ratatoskr-render-job.workspace = true
 ratatoskr-extractor-safe-fetch.workspace = true
 ratatoskr-extractor-telemetry.workspace = true
 axum.workspace = true
@@ -34,14 +37,20 @@ sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+url.workspace = true
+uuid.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+ratatoskr-extractor-url-routing.workspace = true
+url.workspace = true
+tokio-util.workspace = true
 ratatoskr-document-contracts.workspace = true
 ratatoskr-extractor-providers.workspace = true
 ratatoskr-identifiers.workspace = true
 ratatoskr-extractor-document-ir.workspace = true
 ratatoskr-extractor-eventing.workspace = true
+ratatoskr-browser-worker.workspace = true
 ratatoskr-extractor-pdf.workspace = true
 ratatoskr-extractor-persistence = { workspace = true, features = ["test-support"] }
 ratatoskr-extractor-safe-fetch = { workspace = true, features = ["test-support"] }

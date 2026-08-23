@@ -2729,6 +2729,7 @@ dependencies = [
  "ratatoskr-extractor-url-routing",
  "ratatoskr-identifiers",
  "ratatoskr-operation-contracts",
+ "ratatoskr-render-job",
  "serde",
  "serde_json",
  "sha2",
@@ -2814,6 +2815,7 @@ dependencies = [
  "futures-util",
  "http",
  "metrics",
+ "ratatoskr-browser-worker",
  "ratatoskr-document-contracts",
  "ratatoskr-extractor-blob-store",
  "ratatoskr-extractor-core",
@@ -2825,7 +2827,9 @@ dependencies = [
  "ratatoskr-extractor-safe-fetch",
  "ratatoskr-extractor-telemetry",
  "ratatoskr-extractor-test-support",
+ "ratatoskr-extractor-url-routing",
  "ratatoskr-identifiers",
+ "ratatoskr-render-job",
  "secrecy",
  "serde_json",
  "sqlx",
@@ -2834,6 +2838,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "tracing",
+ "url",
  "uuid",
 ]
 

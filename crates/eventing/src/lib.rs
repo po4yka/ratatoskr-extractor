@@ -4,7 +4,13 @@
 
 mod consumer;
 mod outbox;
+mod render;
+
+/// Shared fleet event stream carrying every `evt.*` subject.
+pub const EVENTS_STREAM: &str = "ratatoskr_events";
 mod terminal;
+
+pub use render::{RenderOutcome, RenderRequestError, request_render};
 
 pub use consumer::{ConsumerReport, run_command_consumer};
 pub use outbox::{NatsPublisher, OutboxReport, PublishError, Publisher, run_outbox_once};
