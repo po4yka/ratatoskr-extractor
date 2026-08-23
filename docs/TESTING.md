@@ -7,7 +7,7 @@
 - DOM candidate determinism, quality scoring, provenance, and IR round trips.
 - HTML/PDF fuzzing and malformed fixtures.
 - Browser isolation, blocked resources, cancellation, memory/time limits, and no profile leakage.
-- SQL migrations, outbox/inbox replay, BlobStore verification, and duplicate commands.
+- Current-schema application, outbox/inbox replay, BlobStore verification, and duplicate commands.
 - Golden corpus for static, malformed, multilingual, code/table-heavy, SPA, paywall, PDF, and error pages.
 
 ## Regression gates

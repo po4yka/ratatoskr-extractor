@@ -1,6 +1,8 @@
 # Ratatoskr Extractor Architecture
 
-> Status: target architecture. The repository is in architecture bootstrap; this document defines the intended service boundaries, processing stages, safety model, and performance criteria.
+> Status: target architecture. The service foundation, safe URL routing and fetch, parse-once HTML
+> selection, Document IR, PostgreSQL/JetStream pipeline, and direct PDF extraction are implemented.
+> Provider adapters, OCR, the browser worker, and broad corpus/performance work remain planned.
 
 ## 1. Purpose
 
@@ -71,7 +73,7 @@ ratatoskr-extractor/
 ├── services/
 │   ├── extractor/
 │   └── browser-worker/
-├── migrations/
+├── schema.sql
 ├── fixtures/
 │   ├── golden-corpus/
 │   └── malformed/

@@ -41,6 +41,7 @@ crates/url-routing   URL identity, source classification, and SSRF-safe DNS
 crates/blob-store    extractor-owned content-addressed artifacts and BlobRef verification
 crates/safe-fetch    pooled HTTP, redirects, limits, decoding, cache validation, and retry
 crates/document-ir   bounded HTML5 parse-once candidates, quality selection, and shared Document IR
+crates/pdf           bounded direct PDF text extraction into the shared Document IR
 crates/persistence   finite PostgreSQL pool and the one editable extractor schema
 crates/eventing      typed command inbox, leased worker records, outbox, and JetStream ACKs
 crates/test-support  deterministic local network and storage fixtures
@@ -227,23 +228,22 @@ Events are idempotent and correlated with Platform operations. Knowledge consume
 
 ## Observability
 
-Core metrics include:
+Implemented metrics are:
 
 ```text
-extractor_request_duration
-extractor_fetch_bytes
-extractor_candidate_score
-extractor_selected_strategy
-extractor_browser_escalation_rate
-extractor_cache_hit_rate
-extractor_ssrf_blocks
-extractor_dns_failures
-extractor_quality_rejections
-browser_job_duration
-browser_process_restarts
+ratatoskr_extractor_fetch_failures_total{failure_class}
+ratatoskr_extractor_fetch_duration_seconds
+ratatoskr_extractor_fetch_bytes_total{representation}
+ratatoskr_fetch_results_total{cache}
+ratatoskr_extractor_commands_total{outcome}
+ratatoskr_extractor_outbox_publications_total{outcome}
+ratatoskr_extractor_runs_total{outcome}
+ratatoskr_extractor_parse_duration_seconds
 ```
 
-Attempt-level diagnostics must support comparison with the legacy pipeline during shadow mode.
+Candidate-score, selected-strategy, browser, cache-rate, and broad corpus comparison metrics remain
+planned with the capabilities that would produce them. Attempt-level diagnostics must support
+comparison with the legacy pipeline during shadow mode.
 
 ## Golden corpus and migration
 
@@ -282,20 +282,19 @@ The legacy and Rust pipelines will run in shadow mode. Evaluation compares compl
 - Running every available scraper or browser in parallel.
 - Treating Markdown as the sole source of truth.
 
-## Initial milestones
+## Implementation plan
 
-1. Establish contracts, service skeleton, configuration, and the editable schema.
-2. Implement URL normalization and SSRF-safe HTTP fetching.
-3. Add HTML5 parsing and the first extraction candidates.
-4. Define and persist Document IR.
-5. Add quality scoring and golden-corpus benchmarks.
-6. Introduce direct PDF extraction.
-7. Add the isolated browser worker.
-8. Run legacy shadow comparisons and cut over static HTML first.
+The authoritative implemented-versus-planned sequence is
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). Items 1 through 6 and direct PDF
+extraction are implemented. Provider/source adapters, the isolated browser worker, the expanded
+golden corpus, fuzzing, performance reports, and legacy shadow comparison remain planned.
 
 ## Workspace integration
 
-`ratatoskr-workspace` pins this repository with compatible Document contracts, Knowledge consumers, and integration fixtures. The extractor remains independently buildable and testable, including corpus benchmarks that do not require the full system.
+The planned `ratatoskr-workspace` topology will pin this repository with compatible Document
+contracts, Knowledge consumers, and integration fixtures. No workspace repository pins exist yet.
+The extractor remains independently buildable and testable, including corpus benchmarks that do not
+require the full system.
 
 ## Project status
 
