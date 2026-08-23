@@ -85,6 +85,8 @@ pub struct QueuedRun {
     pub document_id: DocumentId,
     /// Normalized untrusted public URL.
     pub url: String,
+    /// Source classification recorded at intake.
+    pub classification: String,
 }
 
 /// Why a capture command could not be consumed.
@@ -259,9 +261,9 @@ pub async fn claim_queued_run(
     claimed_by: &str,
     lease_seconds: i32,
 ) -> Result<Option<QueuedRun>, ConsumeError> {
-    let claimed = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String)>(
+    let claimed = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String, String)>(
         "with next as (
-             select r.run_id, r.document_id, s.normalized_url
+             select r.run_id, r.document_id, s.normalized_url, s.classification
                from extractor.extraction_runs r
                join extractor.sources s on s.source_id = r.source_id
               where r.status = 'queued'
@@ -275,17 +277,20 @@ pub async fn claim_queued_run(
                 claimed_by = $1,
                 claimed_until = clock_timestamp() + make_interval(secs => $2)
            from next where r.run_id = next.run_id
-          returning r.run_id, next.document_id, next.normalized_url",
+          returning r.run_id, next.document_id, next.normalized_url, next.classification",
     )
     .bind(claimed_by)
     .bind(lease_seconds.clamp(1, 3_600))
     .fetch_optional(pool)
     .await?;
-    Ok(claimed.map(|(run_id, document_id, url)| QueuedRun {
-        run_id,
-        document_id: DocumentId(document_id),
-        url,
-    }))
+    Ok(
+        claimed.map(|(run_id, document_id, url, classification)| QueuedRun {
+            run_id,
+            document_id: DocumentId(document_id),
+            url,
+            classification,
+        }),
+    )
 }
 
 /// Atomically records a terminal safe failure and its operation report.

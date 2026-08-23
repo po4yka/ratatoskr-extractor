@@ -200,6 +200,27 @@ async fn pdf_classified_run_records_pdf_parser_version() -> Result<(), Box<dyn s
 }
 
 #[tokio::test]
+async fn claimed_runs_carry_classification() -> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    queue_direct(
+        pool,
+        "https://news.ycombinator.com/item?id=900",
+        "hacker_news",
+    )
+    .await?;
+    let run = claim_queued_run(pool, "test-worker", 60)
+        .await?
+        .ok_or("the queued run did not lease")?;
+    assert_eq!(
+        run.classification, "hacker_news",
+        "the claim must carry the source classification"
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std::error::Error>> {
     let server = ScriptedServer::start(vec![
         ScriptedResponse::chunks([bytes::Bytes::from_static(TEXT_PDF)]).with_header(
@@ -220,7 +241,7 @@ async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std
     // The scripted server binds loopback; a hostname keeps the public literal-address policy
     // applicable exactly as it is in production.
     let url = server.uri("/report.pdf").replace("127.0.0.1", "localhost");
-    queue_direct(pool, &url).await?;
+    queue_direct(pool, &url, "pdf").await?;
     // The worker leases a run before processing it; terminal facts require that state.
     let run = claim_queued_run(pool, "test-worker", 60)
         .await?
@@ -277,6 +298,7 @@ async fn pdf_failure_classes_reach_terminal_state() -> Result<(), Box<dyn std::e
             &server
                 .uri("/document.pdf")
                 .replace("127.0.0.1", "localhost"),
+            "pdf",
         )
         .await?;
         // The worker leases a run before processing it; terminal facts require that state.
@@ -313,7 +335,11 @@ async fn process_pdf_run(
     Ok(())
 }
 
-async fn queue_direct(pool: &sqlx::PgPool, url: &str) -> Result<QueuedRun, sqlx::Error> {
+async fn queue_direct(
+    pool: &sqlx::PgPool,
+    url: &str,
+    classification: &str,
+) -> Result<(), sqlx::Error> {
     let command_id = uuid::Uuid::now_v7();
     let operation_id = uuid::Uuid::now_v7();
     let owner_id = uuid::Uuid::now_v7();
@@ -344,7 +370,7 @@ async fn queue_direct(pool: &sqlx::PgPool, url: &str) -> Result<QueuedRun, sqlx:
     .bind(owner_id)
     .bind(url)
     .bind(host)
-    .bind("pdf")
+    .bind(classification)
     .execute(pool)
     .await?;
     sqlx::query(
@@ -363,11 +389,7 @@ async fn queue_direct(pool: &sqlx::PgPool, url: &str) -> Result<QueuedRun, sqlx:
     .bind(document_id)
     .execute(pool)
     .await?;
-    Ok(QueuedRun {
-        run_id,
-        document_id: DocumentId(document_id),
-        url: url.to_owned(),
-    })
+    Ok(())
 }
 
 fn capture_command(command_id: uuid::Uuid, url: &str) -> serde_json::Value {
