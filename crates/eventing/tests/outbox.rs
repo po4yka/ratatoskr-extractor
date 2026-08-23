@@ -58,6 +58,18 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     let failed = failed.ok_or("the outbox row never became due")?;
+    let due_now: i64 = sqlx::query_scalar(
+        "select count(*) from extractor.outbox_events
+          where published_at is null and dead_lettered_at is null
+            and next_attempt_at <= clock_timestamp()
+            and (claimed_until is null or claimed_until <= clock_timestamp())",
+    )
+    .fetch_one(database.database.pool())
+    .await?;
+    eprintln!(
+        "DIAG-CI claimed={} due_after_retry={due_now}",
+        failed.claimed
+    );
     assert_eq!(failed.claimed, 1);
     assert_eq!(failed.failed, 1);
     let retryable: bool = sqlx::query_scalar(
