@@ -23,6 +23,7 @@ bytes.workspace = true
 ratatoskr-extractor-blob-store.workspace = true
 figment.workspace = true
 futures-util.workspace = true
+ratatoskr-extractor-eventing.workspace = true
 ratatoskr-render-job.workspace = true
 serde.workspace = true
 serde_json.workspace = true

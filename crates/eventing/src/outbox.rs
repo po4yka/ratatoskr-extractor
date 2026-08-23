@@ -89,8 +89,7 @@ impl NatsPublisher {
     ///
     /// Returns [`PublishError`] when the broker refuses stream management.
     pub async fn ensure_event_stream(&self) -> Result<(), PublishError> {
-        self.ensure_stream(EVENT_STREAM, "evt.>", jetstream::stream::DiscardPolicy::Old)
-            .await
+        ensure_event_stream_on(&self.context).await
     }
 
     /// Creates the bounded shared command stream when absent.
@@ -275,4 +274,29 @@ async fn mark_failed(
     .bind(safe_error)
     .fetch_one(pool)
     .await
+}
+
+/// Creates or loads the shared fleet event stream for a fresh deployment or test broker.
+///
+/// # Errors
+///
+/// Returns [`PublishError`] when `JetStream` setup fails.
+pub async fn ensure_event_stream_on(context: &jetstream::Context) -> Result<(), PublishError> {
+    context
+        .get_or_create_stream(jetstream::stream::Config {
+            name: EVENT_STREAM.to_owned(),
+            subjects: vec!["evt.>".to_owned()],
+            retention: jetstream::stream::RetentionPolicy::Limits,
+            storage: jetstream::stream::StorageType::File,
+            discard: jetstream::stream::DiscardPolicy::Old,
+            max_messages: 1_000_000,
+            max_bytes: 1024 * 1024 * 1024,
+            max_age: Duration::from_hours(168),
+            duplicate_window: Duration::from_mins(2),
+            num_replicas: 1,
+            ..jetstream::stream::Config::default()
+        })
+        .await
+        .map_err(PublishError::new)?;
+    Ok(())
 }

@@ -2570,6 +2570,7 @@ dependencies = [
  "futures-util",
  "http",
  "ratatoskr-extractor-blob-store",
+ "ratatoskr-extractor-eventing",
  "ratatoskr-extractor-test-support",
  "ratatoskr-extractor-url-routing",
  "ratatoskr-render-job",
