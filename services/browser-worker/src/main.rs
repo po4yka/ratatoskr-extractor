@@ -18,10 +18,10 @@ impl RenderExecutor for UnimplementedExecutor {
 
 #[tokio::main]
 async fn main() {
-    let settings = match WorkerSettings::from_env() {
+    let settings = match WorkerSettings::load() {
         Ok(settings) => settings,
-        Err(missing) => {
-            eprintln!("missing environment variables: {missing}");
+        Err(error) => {
+            eprintln!("browser worker configuration failed: {error}");
             std::process::exit(78);
         }
     };

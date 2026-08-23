@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Isolated Chromium rendering for Ratatoskr: durable render commands in, owned BlobRef evidence
+//! Isolated Chromium rendering for Ratatoskr: durable render commands in, owned `BlobRef` evidence
 //! out.
 
 use std::sync::Arc;
@@ -22,7 +22,8 @@ pub const DEFAULT_COMPLETIONS_BUCKET: &str = "browser_worker_completions";
 pub const EVENTS_STREAM: &str = "ratatoskr_events";
 
 /// Worker settings resolved from the process environment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields, default)]
 pub struct WorkerSettings {
     /// NATS URL for the command and event bus.
     pub nats_url: String,
@@ -34,24 +35,28 @@ pub struct WorkerSettings {
     pub completions_bucket: String,
 }
 
+impl Default for WorkerSettings {
+    fn default() -> Self {
+        Self {
+            nats_url: "nats://127.0.0.1:4222".to_owned(),
+            blobs_root: std::path::PathBuf::new(),
+            durable_name: "ratatoskr_browser_worker".to_owned(),
+            completions_bucket: DEFAULT_COMPLETIONS_BUCKET.to_owned(),
+        }
+    }
+}
+
 impl WorkerSettings {
-    /// Reads settings from the environment with contract-safe defaults.
+    /// Loads settings from `BROWSER_*` environment variables with contract-safe defaults.
     ///
     /// # Errors
     ///
-    /// Returns the missing variable names joined by commas.
-    pub fn from_env() -> Result<Self, String> {
-        let blobs_root = match std::env::var("BROWSER_BLOBS_ROOT") {
-            Ok(value) => value,
-            Err(_) => return Err("BROWSER_BLOBS_ROOT".to_owned()),
-        };
-        Ok(Self {
-            nats_url: std::env::var("BROWSER_NATS_URL")
-                .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_owned()),
-            blobs_root: std::path::PathBuf::from(blobs_root),
-            durable_name: "ratatoskr_browser_worker".to_owned(),
-            completions_bucket: DEFAULT_COMPLETIONS_BUCKET.to_owned(),
-        })
+    /// Returns a message when the environment cannot be extracted.
+    pub fn load() -> Result<Self, String> {
+        figment::Figment::new()
+            .merge(figment::providers::Env::prefixed("BROWSER_"))
+            .extract::<Self>()
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -74,10 +79,6 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     WorkerError::Infrastructure(Box::new(error))
-}
-
-fn already_boxed(error: Box<dyn std::error::Error + Send + Sync>) -> WorkerError {
-    WorkerError::Infrastructure(error)
 }
 
 /// What one completed rendering produced before publication.
@@ -106,7 +107,7 @@ pub trait RenderExecutor: Send + Sync {
 ///
 /// # Errors
 ///
-/// Returns [`WorkerError`] when JetStream setup fails.
+/// Returns [`WorkerError`] when `JetStream` setup fails.
 pub async fn ensure_render_stream(
     context: &jetstream::Context,
     completions_bucket: &str,
@@ -122,7 +123,7 @@ pub async fn ensure_render_stream(
     let _ = context
         .create_key_value(jetstream::kv::Config {
             bucket: completions_bucket.to_owned(),
-            max_age: std::time::Duration::from_secs(24 * 60 * 60),
+            max_age: std::time::Duration::from_hours(24),
             ..jetstream::kv::Config::default()
         })
         .await
@@ -157,7 +158,7 @@ where
                 durable_name: Some(settings.durable_name.clone()),
                 filter_subject: RENDER_REQUESTED_SUBJECT.to_owned(),
                 ack_policy: jetstream::consumer::AckPolicy::Explicit,
-                ack_wait: std::time::Duration::from_secs(300),
+                ack_wait: std::time::Duration::from_mins(5),
                 max_deliver: 12,
                 ..jetstream::consumer::pull::Config::default()
             },
@@ -171,83 +172,104 @@ where
         .await
         .map_err(infrastructure)?;
     let mut messages = consumer.messages().await.map_err(infrastructure)?;
+    let context = &context;
     loop {
-        let message = tokio::select! {
+        let delivery = tokio::select! {
             biased;
             () = cancellation.cancelled() => return Ok(()),
             next = messages.next() => next,
         };
-        let Some(message) = message else {
+        let Some(message) = delivery else {
             break;
         };
-        let message = match message {
-            Ok(message) => message,
+        match message {
+            Ok(message) => {
+                handle_delivery(&message, context, &executor, &store, &completions).await;
+            }
             Err(error) => {
                 tracing::warn!(error = %error, "render delivery failed");
-                continue;
-            }
-        };
-        let command: RenderCommand = match serde_json::from_slice(&message.payload) {
-            Ok(command) => command,
-            Err(error) => {
-                tracing::warn!(error = %error, "render command is malformed");
-                message.ack().await.map_err(already_boxed)?;
-                continue;
-            }
-        };
-        let dedup_state = completions.get(command.render_id.to_string()).await;
-        if matches!(dedup_state, Ok(Some(_))) {
-            message.ack().await.map_err(already_boxed)?;
-            continue;
-        }
-        match executor.render(&command).await {
-            Ok(outcome) => {
-                let blob = store
-                    .store(
-                        "text/html",
-                        futures_util::stream::iter([
-                            Ok::<_, extractor_blob_store::BlobStoreError>(bytes::Bytes::from(
-                                outcome.dom,
-                            )),
-                        ]),
-                    )
-                    .await?;
-                eprintln!(
-                    "DIAG-WORKER stored {:?}, publishing",
-                    blob.digest.hex.as_str()
-                );
-                let completed = RenderCompleted {
-                    render_id: command.render_id,
-                    final_url: outcome.final_url,
-                    dom: blob,
-                    evidence: outcome.evidence,
-                };
-                publish_event(&context, RENDER_COMPLETED_SUBJECT, &completed).await?;
-                completions
-                    .put(command.render_id.to_string(), "completed".into())
-                    .await
-                    .map_err(infrastructure)?;
-                message.ack().await.map_err(already_boxed)?;
-            }
-            Err(WorkerError::Failed(class)) => {
-                let failed = RenderFailed {
-                    render_id: command.render_id,
-                    class,
-                };
-                publish_event(&context, RENDER_FAILED_SUBJECT, &failed).await?;
-                completions
-                    .put(command.render_id.to_string(), class.as_str().into())
-                    .await
-                    .map_err(infrastructure)?;
-                message.ack().await.map_err(already_boxed)?;
-            }
-            Err(error @ (WorkerError::Infrastructure(_) | WorkerError::Storage(_))) => {
-                tracing::warn!(error = %error, "worker infrastructure failed; leaving unacked");
-                continue;
             }
         }
     }
     Ok(())
+}
+
+/// Processes one delivery: render, publish evidence, mark, and acknowledge.
+async fn handle_delivery<E>(
+    message: &jetstream::Message,
+    context: &jetstream::Context,
+    executor: &E,
+    store: &BlobStore,
+    completions: &jetstream::kv::Store,
+) where
+    E: RenderExecutor,
+{
+    let command: RenderCommand = match serde_json::from_slice(&message.payload) {
+        Ok(command) => command,
+        Err(error) => {
+            tracing::warn!(error = %error, "render command is malformed");
+            message.ack().await.ok();
+            return;
+        }
+    };
+    if matches!(
+        completions.get(command.render_id.to_string()).await,
+        Ok(Some(_))
+    ) {
+        message.ack().await.ok();
+        return;
+    }
+    match executor.render(&command).await {
+        Ok(outcome) => {
+            let blob = match store
+                .store(
+                    "text/html",
+                    futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from(
+                        outcome.dom,
+                    ))]),
+                )
+                .await
+            {
+                Ok(blob) => blob,
+                Err(error) => {
+                    tracing::warn!(error = %error, "rendered DOM persistence failed");
+                    return;
+                }
+            };
+            let completed = RenderCompleted {
+                render_id: command.render_id,
+                final_url: outcome.final_url,
+                dom: blob,
+                evidence: outcome.evidence,
+            };
+            if publish_event(context, RENDER_COMPLETED_SUBJECT, &completed)
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+        Err(WorkerError::Failed(class)) => {
+            let failed = RenderFailed {
+                render_id: command.render_id,
+                class,
+            };
+            if publish_event(context, RENDER_FAILED_SUBJECT, &failed)
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "worker infrastructure failed; leaving unacked");
+        }
+    }
+    completions
+        .put(command.render_id.to_string(), "done".into())
+        .await
+        .ok();
+    message.ack().await.ok();
 }
 
 async fn publish_event<T: serde::Serialize>(

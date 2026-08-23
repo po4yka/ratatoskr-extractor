@@ -19,6 +19,7 @@ path = "src/main.rs"
 async-nats.workspace = true
 bytes.workspace = true
 ratatoskr-extractor-blob-store.workspace = true
+figment.workspace = true
 futures-util.workspace = true
 ratatoskr-render-job.workspace = true
 serde.workspace = true

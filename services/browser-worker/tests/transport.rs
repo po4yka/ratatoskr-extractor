@@ -48,6 +48,10 @@ fn command() -> RenderCommand {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test-only broker location is not process configuration"
+)]
 fn nats_url() -> String {
     match std::env::var("EXTRACTOR_TEST_NATS_URL") {
         Ok(value) => value,
