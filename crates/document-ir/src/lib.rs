@@ -382,6 +382,23 @@ fn block_text_len(block: &DocumentBlock) -> usize {
     }
 }
 
+/// Reduces a provider HTML fragment to whitespace-normalized plain text.
+///
+/// Legacy provider text fields (Hacker News item bodies) carry inline tags and character
+/// entities; the shared HTML DOM parses them once and only text nodes survive. Returns `None`
+/// when nothing textual remains.
+#[must_use]
+pub fn plain_text_fragment(html: &str) -> Option<String> {
+    let dom = HtmlDom::parse(html);
+    let body = dom.elements().find(|element| element.name() == "body")?;
+    let text = body
+        .text()
+        .flat_map(str::split_whitespace)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!text.is_empty()).then_some(text)
+}
+
 fn normalized_text(element: Element<'_>) -> Option<String> {
     let text = element
         .text()

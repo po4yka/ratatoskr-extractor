@@ -2604,6 +2604,7 @@ dependencies = [
  "ratatoskr-identifiers",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "url",
 ]

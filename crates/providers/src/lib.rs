@@ -1,8 +1,16 @@
 #![forbid(unsafe_code)]
 
 //! Bounded provider-native JSON conversion into the shared Document IR contract.
+use ratatoskr_document_contracts::{Document, DocumentAddress, ExtractionStrategy};
 
-use ratatoskr_document_contracts::DocumentAddress;
+use extractor_document_ir::{CandidateDecision, assemble_document};
+use ratatoskr_identifiers::{BlobRef, DocumentId};
+
+mod hacker_news;
+mod reddit;
+
+pub use hacker_news::HACKER_NEWS_STRATEGY;
+pub use reddit::REDDIT_STRATEGY;
 
 /// The provider routes this crate knows how to represent natively.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +19,95 @@ pub enum SourceRoute {
     HackerNews,
     /// Reddit permalinks served as JSON listings.
     Reddit,
+}
+
+/// Inputs needed to construct a shared document from a verified provider payload.
+#[derive(Debug, Clone)]
+pub struct ProviderInput<'a> {
+    /// Stable document identity assigned by the extraction run.
+    pub document_id: DocumentId,
+    /// Address of the fetched native representation.
+    pub source_address: DocumentAddress,
+    /// Verified raw payload artifact.
+    pub source_blob: BlobRef,
+    /// Which provider schema the payload follows.
+    pub route: SourceRoute,
+    /// Raw payload bytes.
+    pub bytes: &'a [u8],
+}
+
+/// Finite adapter budgets.
+#[derive(Debug, Clone, Copy)]
+pub struct ProviderLimits {
+    /// Maximum payload bytes admitted to an adapter.
+    pub max_input_bytes: usize,
+    /// Maximum Document IR blocks produced by one conversion.
+    pub max_blocks: usize,
+}
+
+/// Selected Document IR built from one provider payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProviderExtraction {
+    /// Shared Document IR built from the extracted content.
+    pub document: Document,
+    /// Candidate decisions in stable strategy order.
+    pub candidates: Vec<CandidateDecision>,
+}
+
+/// Converts one verified provider payload into shared Document IR.
+///
+/// # Errors
+///
+/// Returns [`ProviderError`] when a budget is exceeded or the payload violates its schema.
+pub fn from_provider(
+    input: ProviderInput<'_>,
+    limits: ProviderLimits,
+) -> Result<ProviderExtraction, ProviderError> {
+    if input.bytes.len() > limits.max_input_bytes {
+        return Err(ProviderError::ResourceLimit);
+    }
+    let strategy;
+    let (title, _blocks, mut decision) = match input.route {
+        SourceRoute::HackerNews => {
+            strategy = HACKER_NEWS_STRATEGY;
+            hacker_news::from_algolia(input.bytes, &limits)?
+        }
+        SourceRoute::Reddit => {
+            strategy = REDDIT_STRATEGY;
+            reddit::from_listings(input.bytes, &limits)?
+        }
+    };
+    if !decision.accepted {
+        return Err(ProviderError::LowQuality {
+            candidates: vec![decision],
+        });
+    }
+    decision.selected = true;
+    let extraction_strategy =
+        ExtractionStrategy::parse(strategy).map_err(|_| ProviderError::Schema)?;
+    let document = assemble_document(
+        input.document_id,
+        input.source_address,
+        &input.source_blob,
+        &extraction_strategy,
+        title,
+        None,
+        decision.blocks.clone(),
+    )
+    .map_err(provider_identity_error)?;
+    Ok(ProviderExtraction {
+        document,
+        candidates: vec![decision],
+    })
+}
+
+fn provider_identity_error(error: extractor_document_ir::DocumentIrError) -> ProviderError {
+    match error {
+        extractor_document_ir::DocumentIrError::Serialization(serialization) => {
+            ProviderError::Serialization(serialization)
+        }
+        _ => ProviderError::InvalidUrl,
+    }
 }
 
 /// Maps a classified source URL to its provider-native representation.
@@ -55,10 +152,7 @@ fn hacker_news_request(parsed: &url::Url) -> Result<Option<DocumentAddress>, Pro
 }
 
 fn reddit_request(parsed: &url::Url) -> Result<Option<DocumentAddress>, ProviderError> {
-    let canonical_web_host = matches!(
-        parsed.host_str(),
-        Some("www.reddit.com") | Some("reddit.com")
-    );
+    let canonical_web_host = matches!(parsed.host_str(), Some("www.reddit.com" | "reddit.com"));
     if !canonical_web_host {
         return Ok(None);
     }
@@ -67,10 +161,14 @@ fn reddit_request(parsed: &url::Url) -> Result<Option<DocumentAddress>, Provider
         .trim_matches('/')
         .split('/')
         .collect::<Vec<_>>();
-    if segments.len() < 4 || segments[0] != "r" || segments[2] != "comments" {
+    let [kind, subreddit, comments, tail @ ..] = segments.as_slice() else {
         return Ok(None);
-    }
-    if segments[3..].iter().any(|segment| segment.is_empty()) {
+    };
+    if kind != &"r"
+        || comments != &"comments"
+        || subreddit.is_empty()
+        || tail.iter().any(|segment| segment.is_empty())
+    {
         return Ok(None);
     }
     let mut mapped = parsed.clone();
@@ -108,4 +206,14 @@ pub enum ProviderError {
     /// The URL itself is malformed.
     #[error("provider source URL is invalid")]
     InvalidUrl,
+    /// The converted content did not cross the shared quality thresholds; rejected candidate
+    /// evidence is attached for the degraded terminal record.
+    #[error("provider content did not meet quality thresholds")]
+    LowQuality {
+        /// Rejected candidate decisions retained for diagnostics and persistence.
+        candidates: Vec<CandidateDecision>,
+    },
+    /// Canonical block serialization failed.
+    #[error("Document IR blocks could not be serialized")]
+    Serialization(#[from] serde_json::Error),
 }
