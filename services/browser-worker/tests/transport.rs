@@ -82,7 +82,13 @@ async fn commands_are_consumed_once_and_deduped() -> Result<(), Box<dyn std::err
         .await?;
     // The shared stream accumulates deliveries from earlier runs; this test owns a fresh
     // durable consumer and starts from an empty log.
-    let command_stream = context.get_stream("ratatoskr_commands").await?;
+    let command_stream = context
+        .get_or_create_stream(async_nats::jetstream::stream::Config {
+            name: "ratatoskr_commands".to_owned(),
+            subjects: vec!["cmd.>".to_owned()],
+            ..async_nats::jetstream::stream::Config::default()
+        })
+        .await?;
     command_stream.purge().await?;
     ensure_render_stream(&context, &settings.completions_bucket).await?;
 
