@@ -35,7 +35,8 @@ non-empty candidate set produced by the extraction path, so single-strategy extr
 same facts as multi-candidate HTML runs. A quality rejection SHALL record the extraction path's
 explicit failure class, and command intake SHALL record the parser version implied by the source
 classification. Claimed runs SHALL carry their source classification so the pipeline can route them
-without a second database read.
+without a second database read. An escalated run SHALL renew its lease while awaiting a render
+result and SHALL terminate with the carried worker failure class when rendering fails.
 
 #### Scenario: a document succeeds
 
@@ -60,6 +61,12 @@ without a second database read.
 - **WHEN** a worker leases a run whose source was classified as a provider route
 - **THEN** the claim carries that classification and the queued run recorded the providers parser
   version at intake
+
+#### Scenario: an escalated run survives its lease window
+
+- **WHEN** a render result arrives after the original lease would have expired
+- **THEN** the run remains claimable by its owner until the render budget elapses, and its terminal
+  facts commit exactly once
 
 ### Requirement: Publication is bounded and acknowledged
 
