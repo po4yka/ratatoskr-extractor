@@ -87,6 +87,11 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
     publisher.ensure_event_stream().await?;
     let outcome = run_outbox_once(database.database.pool(), &publisher, "test", 10).await?;
     eprintln!("DIAG-CI second outcome={outcome:?}");
+    let last_error: Option<String> =
+        sqlx::query_scalar("select last_error from extractor.outbox_events limit 1")
+            .fetch_one(database.database.pool())
+            .await?;
+    eprintln!("DIAG-CI last_error={last_error:?}");
     assert_eq!(outcome.published, 1);
     let settled: bool = sqlx::query_scalar(
         "select attempts = 1 and published_at is not null and claimed_until is null
