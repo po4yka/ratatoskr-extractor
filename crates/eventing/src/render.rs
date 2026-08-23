@@ -19,7 +19,7 @@ pub enum RenderOutcome {
 /// Why a render request could not be made or awaited.
 #[derive(Debug, thiserror::Error)]
 pub enum RenderRequestError {
-    /// JetStream transport failed; the command may or may not have been delivered.
+    /// `JetStream` transport failed; the command may or may not have been delivered.
     #[error("render request transport failed")]
     Transport(#[from] Box<dyn std::error::Error + Send + Sync>),
     /// The result did not arrive within the render budget.
@@ -62,7 +62,7 @@ pub async fn request_render(
                 durable_name: None,
                 filter_subject: "evt.content.render.>".to_owned(),
                 ack_policy: jetstream::consumer::AckPolicy::None,
-                inactive_threshold: std::time::Duration::from_secs(120),
+                inactive_threshold: std::time::Duration::from_mins(2),
                 ..jetstream::consumer::pull::Config::default()
             },
         )
@@ -73,23 +73,18 @@ pub async fn request_render(
     let total = std::time::Duration::from_millis(command.budgets.total_timeout_ms);
     let deadline = tokio::time::Instant::now() + total;
     loop {
-        let next = match tokio::time::timeout_at(deadline, messages.next()).await {
-            Ok(next) => next,
-            Err(_) => return Err(RenderRequestError::Timeout),
-        };
-        let Some(message) = next else {
+        let Ok(next) = tokio::time::timeout_at(deadline, messages.next()).await else {
             return Err(RenderRequestError::Timeout);
         };
-        let message = match message {
-            Ok(message) => message,
-            Err(error) => return Err(infrastructure(error)),
+        let Some(Ok(message)) = next else {
+            // A delivery error leaves the pull request; the deadline handles termination.
+            return Err(RenderRequestError::Timeout);
         };
-        if message.subject == RENDER_COMPLETED_SUBJECT.into() {
-            if let Ok(completed) = serde_json::from_slice::<RenderCompleted>(&message.payload)
-                && completed.render_id == command.render_id
-            {
-                return Ok(RenderOutcome::Completed(Box::new(completed)));
-            }
+        if message.subject == RENDER_COMPLETED_SUBJECT.into()
+            && let Ok(completed) = serde_json::from_slice::<RenderCompleted>(&message.payload)
+            && completed.render_id == command.render_id
+        {
+            return Ok(RenderOutcome::Completed(Box::new(completed)));
         }
         if message.subject == RENDER_FAILED_SUBJECT.into()
             && let Ok(failed) = serde_json::from_slice::<RenderFailed>(&message.payload)
@@ -98,5 +93,4 @@ pub async fn request_render(
             return Ok(RenderOutcome::Failed(failed));
         }
     }
-    Err(RenderRequestError::Timeout)
 }

@@ -97,7 +97,7 @@ async fn run_initialized(
     let background_cancel = CancellationToken::new();
     let server_cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
-    let bus_context = publisher.context().clone();
+    let bus = publisher.context().clone();
     tasks.spawn({
         let publisher = publisher.clone();
         let pool = database.pool().clone();
@@ -130,7 +130,7 @@ async fn run_initialized(
         config.pdf.clone(),
         config.providers.clone(),
         config.render.clone(),
-        publisher.context().clone(),
+        bus,
         config.bus.worker_lease_seconds,
         config.bus.poll_interval_ms,
         admission.clone(),
@@ -229,7 +229,7 @@ async fn worker_loop(
     pdf: PdfConfig,
     providers: ProvidersConfig,
     render: RenderConfig,
-    bus_context: async_nats::jetstream::Context,
+    bus: async_nats::jetstream::Context,
     lease_seconds: i32,
     poll_interval_ms: u64,
     admission: AdmissionController,
@@ -262,7 +262,7 @@ async fn worker_loop(
                 &pdf,
                 &providers,
                 &render,
-                &bus_context,
+                &bus,
                 &run,
             ) => result?,
         }

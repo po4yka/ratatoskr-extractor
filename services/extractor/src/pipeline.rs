@@ -1,6 +1,5 @@
 //! The per-run extraction pipeline shared by the worker loop and integration tests.
 
-use browser_worker::WorkerError;
 use extractor_blob_store::BlobStore;
 use extractor_core::{ParserConfig, PdfConfig, ProvidersConfig, RenderConfig};
 use extractor_document_ir::{
@@ -8,9 +7,8 @@ use extractor_document_ir::{
 };
 use extractor_eventing::{
     CompletedFetch, RenderOutcome, RenderRequestError, complete_document, fail_run, reject_quality,
-    request_render, store_document_ir,
+    store_document_ir,
 };
-use render_job::RenderBudgets;
 
 use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_providers::{
@@ -161,29 +159,25 @@ async fn complete_html(
             // escalate, and only once — this branch has no escalation of its own.
             let empty_shell = is_empty_shell(&raw_html)
                 && candidates.iter().all(|c| c.metrics.text_characters < 120);
-            if render.enabled && empty_shell {
-                match escalate_to_render(pool, store, render, bus, parser, run, &fetched).await? {
-                    Some(extraction) => {
-                        let ir_blob = store_document_ir(store, &extraction.document).await?;
-                        let fetch = completed_fetch(&fetched);
-                        complete_document(
-                            pool,
-                            run.run_id,
-                            &extraction.document,
-                            &ir_blob,
-                            &fetch,
-                            &extraction.candidates,
-                        )
-                        .await?;
-                        metrics::counter!(
-                            "ratatoskr_extractor_runs_total",
-                            "outcome" => "succeeded"
-                        )
-                        .increment(1);
-                        return Ok(());
-                    }
-                    None => {}
-                }
+            if render.enabled
+                && empty_shell
+                && let Some(extraction) =
+                    escalate_to_render(pool, render, bus, parser, run, &fetched).await?
+            {
+                let ir_blob = store_document_ir(store, &extraction.document).await?;
+                let fetch = completed_fetch(&fetched);
+                complete_document(
+                    pool,
+                    run.run_id,
+                    &extraction.document,
+                    &ir_blob,
+                    &fetch,
+                    &extraction.candidates,
+                )
+                .await?;
+                metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded")
+                    .increment(1);
+                return Ok(());
             }
             let fetch = completed_fetch(&fetched);
             reject_quality(pool, run.run_id, &fetch, &candidates, "quality").await?;
@@ -460,7 +454,6 @@ fn is_empty_shell(raw_html: &[u8]) -> bool {
 
 async fn escalate_to_render(
     pool: &sqlx::PgPool,
-    store: &BlobStore,
     render: &RenderConfig,
     bus: &async_nats::jetstream::Context,
     parser: &ParserConfig,

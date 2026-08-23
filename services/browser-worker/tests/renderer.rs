@@ -16,10 +16,7 @@ fn budgets() -> RenderBudgets {
     reason = "test-only browser location is not process configuration"
 )]
 fn chrome_bin() -> String {
-    match std::env::var("CHROME_BIN") {
-        Ok(value) => value,
-        Err(_) => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".to_owned(),
-    }
+    std::env::var("CHROME_BIN").unwrap_or_default()
 }
 
 #[tokio::test]

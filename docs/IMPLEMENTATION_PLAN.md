@@ -8,7 +8,7 @@
 - [x] Persist runs/candidates/artifacts and publish events with outbox/inbox.
 - [x] Add direct PDF extraction producing Document IR with typed encrypted/pathological failure modes.
 - [x] Add selected provider/source adapters (Hacker News, Reddit).
-- [ ] Add isolated browser worker and strict escalation policy.
+- [x] Add isolated browser worker and strict escalation policy.
 - [ ] Build golden corpus, fuzzing, and performance reports.
 - [ ] Run legacy shadow comparison and cut over source classes independently.
 

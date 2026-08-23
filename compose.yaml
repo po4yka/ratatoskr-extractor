@@ -29,5 +29,23 @@ services:
     volumes:
       - extractor-nats-data:/data
 
+  browser-worker:
+    image: ratatoskr-browser-worker:dev
+    build:
+      context: .
+      dockerfile: deploy/browser-worker/Dockerfile
+    profiles: ["browser"]
+    environment:
+      BROWSER_NATS_URL: "nats://ratatoskr-extractor-nats:4222"
+      BROWSER_BLOBS_ROOT: "/data/blobs"
+    volumes:
+      - extractor-browser-blobs:/data/blobs
+    mem_limit: 1g
+    pids_limit: 256
+    depends_on:
+      ratatoskr-extractor-nats:
+        condition: service_healthy
+
 volumes:
   extractor-nats-data:
+  extractor-browser-blobs:
