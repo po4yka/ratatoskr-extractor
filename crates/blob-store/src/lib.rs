@@ -18,6 +18,7 @@ const OWNER: &str = "ratatoskr-extractor";
 #[derive(Debug, Clone)]
 pub struct BlobStore {
     root: PathBuf,
+    owner: String,
 }
 
 /// Why a raw artifact could not be stored or verified.
@@ -65,7 +66,19 @@ impl BlobStore {
     pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
+            owner: OWNER.to_owned(),
         }
+    }
+
+    /// Names the owning service recorded in every published [`BlobRef`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BlobStoreError`] when the owner name violates the shared contract.
+    pub fn with_owner(mut self, owner: &str) -> Result<Self, BlobStoreError> {
+        BlobOwner::parse(owner).map_err(|_| BlobStoreError::InvalidIdentity)?;
+        owner.clone_into(&mut self.owner);
+        Ok(self)
     }
 
     /// Prepares store directories before the service becomes ready.
@@ -101,7 +114,7 @@ impl BlobStore {
         S: Stream<Item = Result<Bytes, E>> + Unpin,
         E: std::error::Error,
     {
-        let owner = BlobOwner::parse(OWNER).map_err(|_| BlobStoreError::InvalidIdentity)?;
+        let owner = BlobOwner::parse(&self.owner).map_err(|_| BlobStoreError::InvalidIdentity)?;
         let media_type =
             MediaType::parse(media_type).map_err(|_| BlobStoreError::InvalidMediaType)?;
         let staging_directory = self.root.join("staging");
@@ -180,7 +193,7 @@ impl BlobStore {
     ///
     /// Returns [`BlobStoreError`] when ownership or stored bytes do not match the reference.
     pub async fn verify(&self, reference: &BlobRef) -> Result<PathBuf, BlobStoreError> {
-        if reference.owner_service.as_str() != OWNER {
+        if reference.owner_service.as_str() != self.owner.as_str() {
             return Err(BlobStoreError::WrongOwner);
         }
         match reference.digest.algorithm {

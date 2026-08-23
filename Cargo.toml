@@ -13,6 +13,7 @@ members = [
     "crates/telemetry",
     "crates/test-support",
     "crates/url-routing",
+    "services/browser-worker",
     "services/extractor",
 ]
 

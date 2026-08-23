@@ -1,0 +1,36 @@
+[package]
+name = "ratatoskr-browser-worker"
+description = "Isolated Chromium rendering deployable for Ratatoskr."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "browser_worker"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ratatoskr-browser-worker"
+path = "src/main.rs"
+
+[dependencies]
+async-nats.workspace = true
+bytes.workspace = true
+ratatoskr-extractor-blob-store.workspace = true
+futures-util.workspace = true
+ratatoskr-render-job.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+ratatoskr-extractor-test-support.workspace = true
+
+[lints]
+workspace = true

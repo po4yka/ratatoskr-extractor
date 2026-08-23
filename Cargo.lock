@@ -2457,6 +2457,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatoskr-browser-worker"
+version = "0.1.0"
+dependencies = [
+ "async-nats",
+ "bytes",
+ "futures-util",
+ "ratatoskr-extractor-blob-store",
+ "ratatoskr-extractor-test-support",
+ "ratatoskr-render-job",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "ratatoskr-document-contracts"
 version = "0.1.0"
 source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=d56c6891ce9b4fca2c65d43205080d9a666ab5a0#d56c6891ce9b4fca2c65d43205080d9a666ab5a0"
