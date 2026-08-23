@@ -48,7 +48,17 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
     let diagnostic_rows: i64 = sqlx::query_scalar("select count(*) from extractor.outbox_events")
         .fetch_one(database.database.pool())
         .await?;
-    eprintln!("DIAG-CI outbox rows after capture = {diagnostic_rows}");
+    let diagnostic: (Option<String>, Option<String>, i32, Option<String>, String) = sqlx::query_as(
+        "select published_at::text, next_attempt_at::text, attempts,
+                claimed_until::text, subject
+           from extractor.outbox_events",
+    )
+    .fetch_one(database.database.pool())
+    .await?;
+    let database_now: String = sqlx::query_scalar("select clock_timestamp()::text")
+        .fetch_one(database.database.pool())
+        .await?;
+    eprintln!("DIAG-CI rows={diagnostic_rows} row={diagnostic:?} db_clock={database_now}");
 
     let failed = run_outbox_once(database.database.pool(), &RefusingPublisher, "test", 10).await?;
     assert_eq!(failed.claimed, 1);
