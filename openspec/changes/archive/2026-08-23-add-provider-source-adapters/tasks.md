@@ -31,4 +31,4 @@
 ## 6. Documentation and completion
 
 - [x] 6.1 Update DEVELOPMENT.md status paragraph and README source-classification list to name the two implemented adapters and their native representations. No test: documentation verified against built behavior.
-- [ ] 6.2 Run the exact DEVELOPMENT.md gate order including real PostgreSQL/JetStream tests, the file-size ratchet, `openspec validate --strict`, inspect the diff, archive the change after every gate is green, integrate into `main`, push, and verify remote checks.
+- [x] 6.2 Run the exact DEVELOPMENT.md gate order including real PostgreSQL/JetStream tests, the file-size ratchet, `openspec validate --strict`, inspect the diff, archive the change after every gate is green, integrate into `main`, push, and verify remote checks.

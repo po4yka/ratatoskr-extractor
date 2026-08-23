@@ -34,7 +34,8 @@ SHALL store blob references, not raw bodies. A terminal completion transaction S
 non-empty candidate set produced by the extraction path, so single-strategy extractions commit the
 same facts as multi-candidate HTML runs. A quality rejection SHALL record the extraction path's
 explicit failure class, and command intake SHALL record the parser version implied by the source
-classification.
+classification. Claimed runs SHALL carry their source classification so the pipeline can route them
+without a second database read.
 
 #### Scenario: a document succeeds
 
@@ -53,6 +54,12 @@ classification.
 - **WHEN** a capture command for a `.pdf` path is ingested
 - **THEN** the queued run records the PDF parser version while every other source records the HTML
   parser version
+
+#### Scenario: a provider-classified run is claimed
+
+- **WHEN** a worker leases a run whose source was classified as a provider route
+- **THEN** the claim carries that classification and the queued run recorded the providers parser
+  version at intake
 
 ### Requirement: Publication is bounded and acknowledged
 
