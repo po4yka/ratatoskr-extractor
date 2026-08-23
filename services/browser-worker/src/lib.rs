@@ -101,6 +101,9 @@ pub trait RenderExecutor: Send + Sync {
     ) -> impl std::future::Future<Output = Result<RenderOutcome, WorkerError>> + Send;
 }
 
+mod executor;
+pub use executor::{ChromiumExecutor, ExecutorError, NavigationPolicy};
+
 /// Loads the shared command stream and creates the completions bucket.
 ///
 /// The command stream itself belongs to the fleet's capture pipeline and must already exist.
