@@ -8,6 +8,7 @@ members = [
     "crates/pdf",
     "crates/persistence",
     "crates/providers",
+    "crates/render-job",
     "crates/safe-fetch",
     "crates/telemetry",
     "crates/test-support",
@@ -30,6 +31,7 @@ ratatoskr-extractor-eventing = { version = "0.1.0", path = "crates/eventing" }
 ratatoskr-extractor-pdf = { version = "0.1.0", path = "crates/pdf" }
 ratatoskr-extractor-persistence = { version = "0.1.0", path = "crates/persistence" }
 ratatoskr-extractor-providers = { version = "0.1.0", path = "crates/providers" }
+ratatoskr-render-job = { version = "0.1.0", path = "crates/render-job" }
 ratatoskr-extractor-safe-fetch = { version = "0.1.0", path = "crates/safe-fetch" }
 ratatoskr-extractor-telemetry = { version = "0.1.0", path = "crates/telemetry" }
 ratatoskr-extractor-test-support = { version = "0.1.0", path = "crates/test-support" }
@@ -75,7 +77,7 @@ tracing = "=0.1.44"
 tracing-opentelemetry = "=0.33.0"
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["ansi", "env-filter", "fmt", "json", "registry", "std"] }
 url = { version = "=2.5.8", features = ["serde"] }
-uuid = { version = "=1.24.1", features = ["v7"] }
+uuid = { version = "=1.24.1", features = ["serde", "v7"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

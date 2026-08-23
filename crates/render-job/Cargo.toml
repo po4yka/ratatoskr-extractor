@@ -1,0 +1,23 @@
+[package]
+name = "ratatoskr-render-job"
+description = "Wire types implementing the stored Ratatoskr browser-rendering contract."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "render_job"
+path = "src/lib.rs"
+
+[dependencies]
+ratatoskr-identifiers.workspace = true
+serde.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

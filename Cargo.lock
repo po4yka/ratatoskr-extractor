@@ -2740,6 +2740,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatoskr-render-job"
+version = "0.1.0"
+dependencies = [
+ "ratatoskr-identifiers",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "raw-cpuid"
 version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
