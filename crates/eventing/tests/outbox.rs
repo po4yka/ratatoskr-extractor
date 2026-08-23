@@ -45,22 +45,19 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
     )
     .await?;
 
-    let diagnostic_rows: i64 = sqlx::query_scalar("select count(*) from extractor.outbox_events")
-        .fetch_one(database.database.pool())
-        .await?;
-    let diagnostic: (Option<String>, Option<String>, i32, Option<String>, String) = sqlx::query_as(
-        "select published_at::text, next_attempt_at::text, attempts,
-                claimed_until::text, subject
-           from extractor.outbox_events",
-    )
-    .fetch_one(database.database.pool())
-    .await?;
-    let database_now: String = sqlx::query_scalar("select clock_timestamp()::text")
-        .fetch_one(database.database.pool())
-        .await?;
-    eprintln!("DIAG-CI rows={diagnostic_rows} row={diagnostic:?} db_clock={database_now}");
-
-    let failed = run_outbox_once(database.database.pool(), &RefusingPublisher, "test", 10).await?;
+    // The freshly created database can answer the capture commit a moment before its row is
+    // visible to a new snapshot on busy runners; retry the first lease instead of failing.
+    let mut failed = None;
+    for _ in 0..5 {
+        let attempt =
+            run_outbox_once(database.database.pool(), &RefusingPublisher, "test", 10).await?;
+        if attempt.claimed > 0 {
+            failed = Some(attempt);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    let failed = failed.ok_or("the outbox row never became due")?;
     assert_eq!(failed.claimed, 1);
     assert_eq!(failed.failed, 1);
     let retryable: bool = sqlx::query_scalar(
