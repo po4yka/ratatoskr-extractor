@@ -25,3 +25,6 @@ target/
 
 # OS
 .DS_Store
+
+# Agent harness state
+.omo/
