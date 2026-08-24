@@ -3,6 +3,7 @@
 //! Process composition for Ratatoskr Extractor.
 
 mod pipeline;
+mod provider_continuation;
 
 pub use pipeline::{
     ProcessError, complete_provider_for_test as _complete_provider_for_test, process_run,

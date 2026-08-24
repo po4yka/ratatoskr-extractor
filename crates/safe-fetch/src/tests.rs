@@ -1,6 +1,10 @@
+use std::net::{SocketAddr, TcpListener};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use bytes::Bytes;
 use extractor_blob_store::BlobStore;
-use extractor_core::ExtractorConfig;
+use extractor_core::{ExtractorConfig, FetchConfig};
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
 use futures_util::stream;
 
@@ -375,4 +379,93 @@ async fn per_host_capacity_refuses_before_dns() -> Result<(), Box<dyn std::error
     assert!(matches!(result, Err(super::SafeFetchError::Overloaded)));
     assert_eq!(server.request_count(), 0);
     Ok(())
+}
+
+fn spawn_plain_server() -> (SocketAddr, Arc<Mutex<Vec<Instant>>>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback listener");
+    let addr = listener.local_addr().expect("local addr");
+    let arrivals: Arc<Mutex<Vec<Instant>>> = Arc::default();
+    let log = Arc::clone(&arrivals);
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let log = Arc::clone(&log);
+            std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let mut buf = [0_u8; 2048];
+                let _ = stream.read(&mut buf);
+                log.lock().expect("arrival log").push(Instant::now());
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 2\r\n\r\nok",
+                );
+            });
+        }
+    });
+    (addr, arrivals)
+}
+
+fn paced_fetcher(port: u16, interval_ms: u64, total_timeout_ms: u64) -> SafeFetcher {
+    let root = std::env::temp_dir().join(format!("safe-fetch-pacing-{port}"));
+    std::fs::create_dir_all(&root).expect("temp blob root");
+    let config = FetchConfig {
+        max_url_length: 2048,
+        allowed_ports: vec![port],
+        connect_timeout_ms: 1_000,
+        first_byte_timeout_ms: 1_000,
+        read_idle_timeout_ms: 1_000,
+        total_timeout_ms,
+        max_wire_bytes: 1 << 20,
+        max_decoded_bytes: 1 << 20,
+        max_redirects: 0,
+        max_retries: 0,
+        global_concurrency: 4,
+        per_host_concurrency: 4,
+        per_host_min_interval_ms: interval_ms,
+    };
+    SafeFetcher::new_for_test(config, BlobStore::new(&root)).expect("test fetcher")
+}
+
+#[tokio::test]
+async fn requests_to_same_host_are_spaced_by_min_interval() {
+    let (addr, arrivals) = spawn_plain_server();
+    let fetcher = paced_fetcher(addr.port(), 60, 10_000);
+    let url = format!("http://{addr}/paced");
+
+    for _ in 0..3 {
+        let result = fetcher.fetch_for_test(FetchRequest::new(&url)).await;
+        assert!(result.is_ok(), "every paced request succeeds");
+    }
+
+    let times = arrivals.lock().expect("arrival log").clone();
+    assert_eq!(times.len(), 3);
+    for pair in times.windows(2) {
+        let gap = pair[1].saturating_duration_since(pair[0]);
+        assert!(
+            gap >= Duration::from_millis(50),
+            "inter-request gap {gap:?} collapsed below the configured spacing"
+        );
+    }
+}
+
+#[tokio::test]
+async fn pacing_never_extends_operation_deadline() {
+    let (addr, _arrivals) = spawn_plain_server();
+    let fetcher = paced_fetcher(addr.port(), 500, 150);
+    let url = format!("http://{addr}/deadline");
+
+    let first = fetcher.fetch_for_test(FetchRequest::new(&url)).await;
+    assert!(first.is_ok(), "the first request fits inside the deadline");
+
+    let started = Instant::now();
+    let second = fetcher.fetch_for_test(FetchRequest::new(&url)).await;
+    let elapsed = started.elapsed();
+
+    assert!(
+        matches!(second, Err(super::SafeFetchError::TimeoutTotal)),
+        "a wait beyond the remaining deadline surfaces the existing deadline class"
+    );
+    assert!(
+        elapsed < Duration::from_millis(400),
+        "pacing waited past the operation budget ({elapsed:?})"
+    );
 }

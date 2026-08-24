@@ -91,7 +91,8 @@ pub struct CandidateRecord<'a> {
     pub artifact_id: Option<uuid::Uuid>,
 }
 
-/// Records one fetch idempotently by run.
+/// Appends one fetch fact row for an owned run; a run may hold several fetches since provider
+/// post-resolution records both the native payload and its resolved article target.
 ///
 /// # Errors
 ///
@@ -108,13 +109,7 @@ pub async fn record_fetch(pool: &PgPool, record: &FetchRecord<'_>) -> Result<(),
               attempts, cache_outcome, etag, last_modified, fetched_at)
          select $1, $2, $4, $5, $6, $7, $8, $9, $10, $11, $12, transaction_timestamp()
            from extractor.extraction_runs
-          where run_id = $2 and owner_id = $3
-         on conflict (run_id) do update set
-             final_url = excluded.final_url, http_status = excluded.http_status,
-             media_type = excluded.media_type, wire_bytes = excluded.wire_bytes,
-             decoded_bytes = excluded.decoded_bytes, attempts = excluded.attempts,
-             cache_outcome = excluded.cache_outcome, etag = excluded.etag,
-             last_modified = excluded.last_modified",
+          where run_id = $2 and owner_id = $3",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(record.run_id)
@@ -134,7 +129,8 @@ pub async fn record_fetch(pool: &PgPool, record: &FetchRecord<'_>) -> Result<(),
     owned(&result)
 }
 
-/// Records one artifact reference idempotently by run and kind.
+/// Appends one owned artifact fact row for a run; several same-kind rows are legal since provider
+/// post-resolution stores each fetched payload as its own raw source.
 ///
 /// # Errors
 ///
@@ -156,11 +152,7 @@ pub async fn record_artifact(
               length_bytes, created_at)
          select $1, $2, $4, $5, 'sha256', $6, $7, $8, transaction_timestamp()
            from extractor.extraction_runs
-          where run_id = $2 and owner_id = $3
-         on conflict (run_id, kind) do update set
-             owner_service = excluded.owner_service, digest_algorithm = excluded.digest_algorithm,
-             digest_hex = excluded.digest_hex, media_type = excluded.media_type,
-             length_bytes = excluded.length_bytes",
+          where run_id = $2 and owner_id = $3",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(record.run_id)

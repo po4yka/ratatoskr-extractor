@@ -58,7 +58,7 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     let failed = failed.ok_or("the outbox row never became due")?;
-    let due_now: i64 = sqlx::query_scalar(
+    let _due_now: i64 = sqlx::query_scalar(
         "select count(*) from extractor.outbox_events
           where published_at is null and dead_lettered_at is null
             and next_attempt_at <= clock_timestamp()

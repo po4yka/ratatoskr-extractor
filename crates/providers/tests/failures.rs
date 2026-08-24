@@ -29,12 +29,39 @@ fn schema_violations_are_typed() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn link_only_story_degrades_with_candidates() -> Result<(), Box<dyn std::error::Error>> {
+fn link_only_story_carries_external_url_past_the_gate() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = include_bytes!("fixtures/hn-minimal.json");
+    let Ok(extraction) = from_provider(test_input(SourceRoute::HackerNews, bytes)?, limits())
+    else {
+        return Err("a link-only story must pass through with its article URL".into());
+    };
+    assert_eq!(
+        extraction.external_url.as_deref(),
+        Some("https://example.com/link-only"),
+        "the canonical article URL is carried for resolution"
+    );
+    let candidates = &extraction.candidates;
+    let candidate = candidates.first().ok_or("candidate evidence is attached")?;
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidate.strategy, "hacker_news_item");
+    assert!(candidate.selected);
+    assert!(!candidate.accepted);
+    assert_eq!(
+        candidate.reasons,
+        vec![extractor_document_ir::QualityReason::TooShort]
+    );
+    Ok(())
+}
+
+#[test]
+fn self_contained_low_quality_still_degrades() -> Result<(), Box<dyn std::error::Error>> {
+    // Without an external URL a below-threshold story keeps the degradation contract.
+    let bytes =
+        br#"{"id": 902, "title": "Bare self-contained story", "text": null, "children": []}"#;
     let Err(ProviderError::LowQuality { candidates }) =
         from_provider(test_input(SourceRoute::HackerNews, bytes)?, limits())
     else {
-        return Err("a title-only story must degrade".into());
+        return Err("a self-contained low-quality story must degrade".into());
     };
     let candidate = candidates.first().ok_or("candidate evidence is attached")?;
     assert_eq!(candidates.len(), 1);

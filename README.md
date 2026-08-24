@@ -3,11 +3,13 @@
 `ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
 > **Status:** implementation plan items 1 through 8 are complete: foundation, URL/SSRF policy,
-> bounded retrieval, parse-once HTML candidates, deterministic quality selection, Document IR,
-> the durable PostgreSQL/JetStream pipeline, direct PDF extraction, Hacker News/Reddit adapters
-> that fetch each source's native JSON once, and the isolated browser worker with deterministic
-> empty-shell escalation behind `render.enabled`. OCR and delegated platform routes remain
-> planned; scanned PDFs without a text layer are recorded as an explicit degraded outcome.
+> bounded retrieval with per-host pacing, parse-once HTML candidates, deterministic quality
+> selection, Document IR, the durable PostgreSQL/JetStream pipeline, direct PDF extraction,
+> Hacker News/Reddit adapters that fetch each source's native JSON once and resolve link posts
+> through exactly one ordinary retrieval pass (with typed single-fallback degradation), and the
+> isolated browser worker with deterministic empty-shell escalation behind `render.enabled`.
+> OCR and delegated platform routes remain planned; scanned PDFs without a text layer are
+> recorded as an explicit degraded outcome.
 
 > [!IMPORTANT]
 > **Ratatoskr is in development.** No database holds data that has to survive a schema change.
@@ -299,6 +301,7 @@ require the full system.
 
 The ordinary HTML service path, parser, deterministic evaluator, small calibration corpus, direct
 PDF extraction with typed encrypted/pathological failure modes, the Hacker News/Reddit provider
-adapters, and the isolated browser worker (fresh isolated context per job, denied heavy
+adapters with link-post resolution and typed fall-through on provider response-content failures,
+and the isolated browser worker (fresh isolated context per job, denied heavy
 subresources, SSRF revalidation of every hop, finite budgets) are implemented. OCR for scanned
 PDFs and broad corpus/performance reporting remain planned.

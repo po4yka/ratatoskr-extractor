@@ -103,6 +103,7 @@ async fn completed_html_persists_all_candidate_decisions_atomically()
         &ir,
         &fetch,
         &extraction.candidates,
+        &[],
     )
     .await?;
     let report =
@@ -230,6 +231,7 @@ async fn quality_rejection_persists_evidence_without_document_event()
         &fetch,
         &candidates,
         "quality",
+        &[],
     )
     .await?;
 

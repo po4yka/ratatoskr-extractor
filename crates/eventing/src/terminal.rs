@@ -3,6 +3,21 @@ use sqlx::PgTransaction;
 
 use crate::{CompletedFetch, ConsumeError};
 
+/// One ordered provider-resolution step recorded alongside a run's terminal state.
+#[derive(Debug)]
+pub struct ResolutionStep<'a> {
+    /// Zero-based position of this step within the resolution sequence.
+    pub ordinal: i32,
+    /// Step kind: `provider_attempt`, `resolved_target`, or `html_fallback`.
+    pub kind: &'a str,
+    /// Outcome label when the step produced one.
+    pub outcome: Option<&'a str>,
+    /// Failure class when the step failed.
+    pub failure_class: Option<&'a str>,
+    /// Canonical external URL when the step resolved a target.
+    pub resolved_url: Option<&'a str>,
+}
+
 pub(super) fn validate_candidates(
     candidates: &[CandidateDecision],
     selected: usize,
@@ -89,6 +104,30 @@ pub(super) async fn insert_candidates(
         .bind(f64::from(candidate.score) / 1000.0)
         .bind(serde_json::to_value(reasons)?)
         .bind(candidate.selected)
+        .execute(&mut **transaction)
+        .await?;
+    }
+    Ok(())
+}
+
+pub(super) async fn insert_resolution_steps(
+    transaction: &mut PgTransaction<'_>,
+    run_id: uuid::Uuid,
+    steps: &[ResolutionStep<'_>],
+) -> Result<(), ConsumeError> {
+    for step in steps {
+        sqlx::query(
+            "insert into extractor.provider_resolutions
+                 (step_id, run_id, ordinal, kind, outcome, failure_class, resolved_url, created_at)
+             values ($1, $2, $3, $4, $5, $6, $7, transaction_timestamp())",
+        )
+        .bind(uuid::Uuid::now_v7())
+        .bind(run_id)
+        .bind(step.ordinal)
+        .bind(step.kind)
+        .bind(step.outcome)
+        .bind(step.failure_class)
+        .bind(step.resolved_url)
         .execute(&mut **transaction)
         .await?;
     }

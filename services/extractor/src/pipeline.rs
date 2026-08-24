@@ -6,10 +6,13 @@ use extractor_document_ir::{
     DocumentIrError, HtmlDocumentInput, HtmlExtraction, ParseLimits, from_html,
 };
 use extractor_eventing::{
-    CompletedFetch, RenderOutcome, RenderRequestError, complete_document, fail_run, reject_quality,
-    store_document_ir,
+    CompletedFetch, RenderOutcome, RenderRequestError, complete_document, fail_run, record_fetch,
+    reject_quality, store_document_ir,
 };
 
+use crate::provider_continuation::{
+    fallback_to_generic_html, points_back_to_source, resolve_external_article,
+};
 use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_providers::{
     ProviderError, ProviderInput, ProviderLimits, SourceRoute, from_provider, provider_request,
@@ -87,13 +90,16 @@ pub async fn process_run(
     if let Some(route) = route
         && let Some(address) = provider_request(route, &run.url)?
     {
-        return complete_provider(pool, store, providers, retriever, route, address, run).await;
+        return complete_provider(
+            pool, store, providers, retriever, parser, route, address, run,
+        )
+        .await;
     }
     let fetched = match retriever.fetch(FetchRequest::new(&run.url)).await {
         Ok(fetched) => fetched,
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "safe fetch failed");
-            fail_run(pool, run.run_id, "fetch", fetch_retryable(&error)).await?;
+            fail_run(pool, run.run_id, "fetch", fetch_retryable(&error), &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
@@ -102,7 +108,7 @@ pub async fn process_run(
         "text/html" => complete_html(pool, store, parser, render, bus, run, fetched).await,
         "application/pdf" => complete_pdf(pool, store, pdf, run, fetched).await,
         _ => {
-            fail_run(pool, run.run_id, "unsupported_media", false).await?;
+            fail_run(pool, run.run_id, "unsupported_media", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             Ok(())
         }
@@ -122,7 +128,7 @@ async fn complete_html(
         Ok(path) => path,
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "raw artifact verification failed");
-            fail_run(pool, run.run_id, "artifact", false).await?;
+            fail_run(pool, run.run_id, "artifact", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
@@ -173,6 +179,7 @@ async fn complete_html(
                     &ir_blob,
                     &fetch,
                     &extraction.candidates,
+                    &[],
                 )
                 .await?;
                 metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded")
@@ -180,13 +187,13 @@ async fn complete_html(
                 return Ok(());
             }
             let fetch = completed_fetch(&fetched);
-            reject_quality(pool, run.run_id, &fetch, &candidates, "quality").await?;
+            reject_quality(pool, run.run_id, &fetch, &candidates, "quality", &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "Document IR conversion failed");
-            fail_run(pool, run.run_id, "parse", false).await?;
+            fail_run(pool, run.run_id, "parse", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
@@ -200,6 +207,7 @@ async fn complete_html(
         &ir_blob,
         &fetch,
         &extraction.candidates,
+        &[],
     )
     .await?;
     metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
@@ -218,7 +226,7 @@ async fn complete_pdf(
         Ok(path) => path,
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "raw artifact verification failed");
-            fail_run(pool, run.run_id, "artifact", false).await?;
+            fail_run(pool, run.run_id, "artifact", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
@@ -255,19 +263,27 @@ async fn complete_pdf(
         Err(PdfError::NoTextLayer { candidates }) => {
             tracing::info!(run_id = %run.run_id, "PDF has no text layer; recording degraded outcome");
             let fetch = completed_fetch(&fetched);
-            reject_quality(pool, run.run_id, &fetch, &candidates, "pdf_no_text_layer").await?;
+            reject_quality(
+                pool,
+                run.run_id,
+                &fetch,
+                &candidates,
+                "pdf_no_text_layer",
+                &[],
+            )
+            .await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
         Err(PdfError::Encrypted) => {
             tracing::info!(run_id = %run.run_id, "PDF requires a password");
-            fail_run(pool, run.run_id, "pdf_encrypted", false).await?;
+            fail_run(pool, run.run_id, "pdf_encrypted", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "PDF extraction failed");
-            fail_run(pool, run.run_id, "parse", false).await?;
+            fail_run(pool, run.run_id, "parse", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
@@ -281,6 +297,7 @@ async fn complete_pdf(
         &ir_blob,
         &fetch,
         &extraction.candidates,
+        &[],
     )
     .await?;
     metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
@@ -288,11 +305,20 @@ async fn complete_pdf(
 }
 
 /// Completes one run whose classified source maps to a native provider representation.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the pipeline owns one handle for each process resource and finite budget"
+)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one function owns fetch, conversion, resolution branching and terminal transitions"
+)]
 async fn complete_provider(
     pool: &sqlx::PgPool,
     store: &BlobStore,
     providers: &ProvidersConfig,
     retriever: &SafeFetcher,
+    parser: &ParserConfig,
     route: SourceRoute,
     address: DocumentAddress,
     run: &extractor_eventing::QueuedRun,
@@ -301,23 +327,26 @@ async fn complete_provider(
         Ok(fetched) => fetched,
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "provider fetch failed");
-            fail_run(pool, run.run_id, "fetch", fetch_retryable(&error)).await?;
+            fail_run(pool, run.run_id, "fetch", fetch_retryable(&error), &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
     };
     if fetched.media_type != "application/json" {
         tracing::info!(run_id = %run.run_id, media_type = %fetched.media_type,
-            "provider endpoint did not answer with JSON");
-        fail_run(pool, run.run_id, "provider_response", false).await?;
-        metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-        return Ok(());
+            "provider endpoint did not answer with JSON; making one generic HTML attempt");
+        // The provider payload stays recorded and reprocessable even though the run continues
+        // past it into the generic HTML attempt below.
+        let provider_fetch = completed_fetch(&fetched);
+        record_fetch(pool, run.run_id, &provider_fetch).await?;
+        return fallback_to_generic_html(parser, pool, store, retriever, run, "provider_response")
+            .await;
     }
     let source_path = match store.verify(&fetched.artifact).await {
         Ok(path) => path,
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "raw artifact verification failed");
-            fail_run(pool, run.run_id, "artifact", false).await?;
+            fail_run(pool, run.run_id, "artifact", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
@@ -358,6 +387,7 @@ async fn complete_provider(
                 &fetch,
                 &candidates,
                 "provider_low_quality",
+                &[],
             )
             .await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
@@ -365,17 +395,40 @@ async fn complete_provider(
         }
         Err(ProviderError::ResourceLimit) => {
             tracing::warn!(run_id = %run.run_id, error = "resource limit", "provider conversion failed");
-            fail_run(pool, run.run_id, "parse", false).await?;
+            fail_run(pool, run.run_id, "parse", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
         Err(error) => {
-            tracing::warn!(run_id = %run.run_id, error = %error, "provider conversion failed");
-            fail_run(pool, run.run_id, "provider_response", false).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
+            tracing::warn!(
+                run_id = %run.run_id, error = %error,
+                "provider conversion failed; making one generic HTML attempt"
+            );
+            let provider_fetch = completed_fetch(&fetched);
+            record_fetch(pool, run.run_id, &provider_fetch).await?;
+            return fallback_to_generic_html(
+                parser,
+                pool,
+                store,
+                retriever,
+                run,
+                "provider_schema",
+            )
+            .await;
         }
     };
+    // Post-resolution guard: a payload-carried article URL that resolves back onto the source
+    // host keeps the run on the ordinary self-contained completion below.
+    let external_target = extraction
+        .external_url
+        .clone()
+        .filter(|target| !points_back_to_source(&run.url, target));
+    if let Some(target) = external_target.as_deref() {
+        let provider_fetch = completed_fetch(&fetched);
+        record_fetch(pool, run.run_id, &provider_fetch).await?;
+        return resolve_external_article(parser, pool, store, retriever, run, extraction, target)
+            .await;
+    }
     let ir_blob = store_document_ir(store, &extraction.document).await?;
     let fetch = completed_fetch(&fetched);
     complete_document(
@@ -385,6 +438,7 @@ async fn complete_provider(
         &ir_blob,
         &fetch,
         &extraction.candidates,
+        &[],
     )
     .await?;
     metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
@@ -401,20 +455,28 @@ async fn complete_provider(
 ///
 /// Returns [`ProcessError`] under the same conditions as [`process_run`].
 #[doc(hidden)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the test boundary mirrors the production signature it drives"
+)]
 pub async fn complete_provider_for_test(
     pool: &sqlx::PgPool,
     store: &BlobStore,
     providers: &ProvidersConfig,
     retriever: &SafeFetcher,
+    parser: &ParserConfig,
     route: SourceRoute,
     address: &str,
     run: &extractor_eventing::QueuedRun,
 ) -> Result<(), ProcessError> {
     let address = DocumentAddress::parse(address).map_err(|_| ProcessError::DocumentIdentity)?;
-    complete_provider(pool, store, providers, retriever, route, address, run).await
+    complete_provider(
+        pool, store, providers, retriever, parser, route, address, run,
+    )
+    .await
 }
 
-fn completed_fetch(fetched: &FetchResult) -> CompletedFetch<'_> {
+pub(crate) fn completed_fetch(fetched: &FetchResult) -> CompletedFetch<'_> {
     CompletedFetch {
         final_url: fetched.final_url.as_str(),
         http_status: fetched.status,
@@ -432,7 +494,7 @@ fn completed_fetch(fetched: &FetchResult) -> CompletedFetch<'_> {
     }
 }
 
-const fn fetch_retryable(error: &extractor_safe_fetch::SafeFetchError) -> bool {
+pub(crate) const fn fetch_retryable(error: &extractor_safe_fetch::SafeFetchError) -> bool {
     matches!(
         error,
         extractor_safe_fetch::SafeFetchError::Transport
@@ -506,7 +568,7 @@ async fn escalate_to_render(
                 Ok(extraction) => Ok(Some(extraction)),
                 Err(DocumentIrError::LowQuality { candidates }) => {
                     let fetch = completed_fetch(fetched);
-                    reject_quality(pool, run.run_id, &fetch, &candidates, "quality").await?;
+                    reject_quality(pool, run.run_id, &fetch, &candidates, "quality", &[]).await?;
                     metrics::counter!(
                         "ratatoskr_extractor_runs_total",
                         "outcome" => "failed"
@@ -516,7 +578,7 @@ async fn escalate_to_render(
                 }
                 Err(error) => {
                     tracing::warn!(run_id = %run.run_id, error = %error, "rendered DOM conversion failed");
-                    fail_run(pool, run.run_id, "parse", false).await?;
+                    fail_run(pool, run.run_id, "parse", false, &[]).await?;
                     metrics::counter!(
                         "ratatoskr_extractor_runs_total",
                         "outcome" => "failed"
@@ -527,18 +589,18 @@ async fn escalate_to_render(
             }
         }
         Ok(RenderOutcome::Failed(failed)) => {
-            fail_run(pool, run.run_id, failed.class.as_str(), false).await?;
+            fail_run(pool, run.run_id, failed.class.as_str(), false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             Ok(None)
         }
         Err(RenderRequestError::Timeout) => {
-            fail_run(pool, run.run_id, "navigation_timeout", false).await?;
+            fail_run(pool, run.run_id, "navigation_timeout", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             Ok(None)
         }
         Err(RenderRequestError::Transport(error)) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "render transport failed");
-            fail_run(pool, run.run_id, "fetch", true).await?;
+            fail_run(pool, run.run_id, "fetch", true, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             Ok(None)
         }

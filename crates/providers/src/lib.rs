@@ -45,11 +45,24 @@ pub struct ProviderLimits {
     pub max_blocks: usize,
 }
 
+/// What one adapter extracts from a verified payload: title, canonical external article URL when
+/// present, ordered blocks and the shared candidate decision.
+pub(crate) type AdapterExtraction = (
+    Option<String>,
+    Option<String>,
+    Vec<ratatoskr_document_contracts::DocumentBlock>,
+    CandidateDecision,
+);
+
 /// Selected Document IR built from one provider payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderExtraction {
     /// Shared Document IR built from the extracted content.
     pub document: Document,
+    /// Canonical external article URL carried by a link-post payload.
+    ///
+    /// `None` for self-contained discussions and for URLs pointing back at the provider host.
+    pub external_url: Option<String>,
     /// Candidate decisions in stable strategy order.
     pub candidates: Vec<CandidateDecision>,
 }
@@ -67,7 +80,7 @@ pub fn from_provider(
         return Err(ProviderError::ResourceLimit);
     }
     let strategy;
-    let (title, _blocks, mut decision) = match input.route {
+    let (title, raw_external_url, _blocks, mut decision) = match input.route {
         SourceRoute::HackerNews => {
             strategy = HACKER_NEWS_STRATEGY;
             hacker_news::from_algolia(input.bytes, &limits)?
@@ -77,7 +90,19 @@ pub fn from_provider(
             reddit::from_listings(input.bytes, &limits)?
         }
     };
-    if !decision.accepted {
+    // A link post carries its canonical article URL; trim and drop empties, then keep it only
+    // when it does not point back at the provider host itself. Self-contained discussions stay
+    // self-contained and still face the ordinary quality gate below.
+    let mut external_url = raw_external_url
+        .map(|url| url.trim().to_owned())
+        .filter(|url| !url.is_empty());
+    if external_url
+        .as_deref()
+        .is_some_and(|url| points_back_to_source(input.route, url))
+    {
+        external_url = None;
+    }
+    if !decision.accepted && external_url.is_none() {
         return Err(ProviderError::LowQuality {
             candidates: vec![decision],
         });
@@ -97,10 +122,10 @@ pub fn from_provider(
     .map_err(provider_identity_error)?;
     Ok(ProviderExtraction {
         document,
+        external_url,
         candidates: vec![decision],
     })
 }
-
 fn provider_identity_error(error: extractor_document_ir::DocumentIrError) -> ProviderError {
     match error {
         extractor_document_ir::DocumentIrError::Serialization(serialization) => {
@@ -191,6 +216,21 @@ fn host_is(host: Option<&str>, base: &str) -> bool {
                 .strip_suffix(base)
                 .is_some_and(|prefix| prefix.ends_with('.'))
     })
+}
+
+/// Conservative self-host evidence for provider payloads: an external URL resolving to the
+/// provider's own host family points back at the source discussion rather than an article. A URL
+/// that fails to parse counts as pointing back, keeping unparseable payloads self-contained.
+fn points_back_to_source(route: SourceRoute, url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return true;
+    };
+    match route {
+        SourceRoute::HackerNews => host_is(parsed.host_str(), "news.ycombinator.com"),
+        SourceRoute::Reddit => {
+            host_is(parsed.host_str(), "reddit.com") || host_is(parsed.host_str(), "redd.it")
+        }
+    }
 }
 
 /// Why verified provider payloads could not become Document IR.

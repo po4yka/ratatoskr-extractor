@@ -223,7 +223,11 @@ impl SafeFetcher {
         Ok(Self {
             client,
             store: BlobStore::new(blob_root),
-            admission: Admission::new(config.global_concurrency, config.per_host_concurrency),
+            admission: Admission::new(
+                config.global_concurrency,
+                config.per_host_concurrency,
+                std::time::Duration::from_millis(config.per_host_min_interval_ms),
+            ),
             resolver: Some(resolver),
             config,
         })
@@ -276,7 +280,16 @@ impl SafeFetcher {
             .normalized()
             .host_str()
             .ok_or(UrlError::MissingHost)?;
-        let mut admission = self.admission.try_enter(host)?;
+        let (mut admission, reserved_start) = self.admission.try_enter(host)?;
+        let start_at = tokio::time::Instant::from_std(reserved_start);
+        if start_at > started {
+            // Pacing may delay a request but never extends the operation budget: a reserved slot at
+            // or past the deadline surfaces the existing total-deadline error class instead.
+            if start_at >= deadline {
+                return Err(SafeFetchError::TimeoutTotal);
+            }
+            tokio::time::sleep_until(start_at).await;
+        }
         let mut visited = HashSet::new();
         visited.insert(normalized.normalized().as_str().to_owned());
         let mut retries = 0_u16;
@@ -357,7 +370,7 @@ impl SafeFetcher {
                     .host_str()
                     .ok_or(UrlError::MissingHost)?;
                 drop(admission);
-                admission = self.admission.try_enter(host)?;
+                admission = self.admission.try_enter(host)?.0;
                 if !visited.insert(normalized.normalized().as_str().to_owned()) {
                     return Err(SafeFetchError::RedirectLoop);
                 }

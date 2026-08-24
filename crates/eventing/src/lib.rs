@@ -300,6 +300,8 @@ pub async fn claim_queued_run(
     )
 }
 
+pub use terminal::ResolutionStep;
+
 /// Atomically records a terminal safe failure and its operation report.
 ///
 /// # Errors
@@ -310,6 +312,7 @@ pub async fn fail_run(
     run_id: uuid::Uuid,
     failure_class: &str,
     retryable: bool,
+    steps: &[ResolutionStep<'_>],
 ) -> Result<Completion, ConsumeError> {
     if failure_class.is_empty() || failure_class.len() > 64 {
         return Err(ConsumeError::InvalidRunState);
@@ -338,6 +341,7 @@ pub async fn fail_run(
         transaction.commit().await?;
         return Ok(Completion::Duplicate);
     };
+    terminal::insert_resolution_steps(&mut transaction, run_id, steps).await?;
     enqueue_failed_report(&mut transaction, &context, retryable).await?;
     transaction.commit().await?;
     Ok(Completion::Applied)
@@ -395,6 +399,7 @@ pub async fn complete_document(
     ir_blob: &BlobRef,
     fetch: &CompletedFetch<'_>,
     candidates: &[CandidateDecision],
+    steps: &[ResolutionStep<'_>],
 ) -> Result<Completion, ConsumeError> {
     if ir_blob.owner_service.as_str() != PRODUCER
         || fetch.raw_blob.owner_service.as_str() != PRODUCER
@@ -460,6 +465,7 @@ pub async fn complete_document(
     insert_artifact(&mut transaction, run_id, "document_ir", ir_blob, length).await?;
 
     terminal::insert_candidates(&mut transaction, run_id, candidates).await?;
+    terminal::insert_resolution_steps(&mut transaction, run_id, steps).await?;
     enqueue_completion_events(&mut transaction, &context, document, ir_blob).await?;
     transaction.commit().await?;
     Ok(Completion::Applied)
@@ -476,6 +482,7 @@ pub async fn reject_quality(
     fetch: &CompletedFetch<'_>,
     candidates: &[CandidateDecision],
     failure_class: &str,
+    steps: &[ResolutionStep<'_>],
 ) -> Result<Completion, ConsumeError> {
     if failure_class.is_empty() || failure_class.len() > 64 {
         return Err(ConsumeError::InvalidRunState);
@@ -525,9 +532,48 @@ pub async fn reject_quality(
     )
     .await?;
     terminal::insert_candidates(&mut transaction, run_id, candidates).await?;
+    terminal::insert_resolution_steps(&mut transaction, run_id, steps).await?;
     enqueue_failed_report(&mut transaction, &context, false).await?;
     transaction.commit().await?;
     Ok(Completion::Applied)
+}
+
+/// Persists one fetch row and its raw-source artifact without touching run state.
+///
+/// Resolution steps persist additional fetch rows while another completion path owns the
+/// terminal transition, so this helper validates artifact ownership only and never updates the
+/// run row itself.
+///
+/// # Errors
+///
+/// Returns [`ConsumeError`] when artifact ownership is invalid or persistence fails.
+pub async fn record_fetch(
+    pool: &PgPool,
+    run_id: uuid::Uuid,
+    fetch: &CompletedFetch<'_>,
+) -> Result<(), ConsumeError> {
+    if fetch.raw_blob.owner_service.as_str() != PRODUCER
+        || !matches!(
+            fetch.raw_blob.digest.algorithm,
+            ratatoskr_identifiers::DigestAlgorithm::Sha256
+        )
+    {
+        return Err(ConsumeError::InvalidArtifact);
+    }
+    let raw_length =
+        i64::try_from(fetch.raw_blob.length_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
+    let mut transaction = pool.begin().await?;
+    terminal::insert_fetch(&mut transaction, run_id, fetch).await?;
+    insert_artifact(
+        &mut transaction,
+        run_id,
+        "raw_source",
+        fetch.raw_blob,
+        raw_length,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(())
 }
 
 async fn insert_artifact(
@@ -541,11 +587,8 @@ async fn insert_artifact(
         "insert into extractor.artifacts
              (artifact_id, run_id, kind, owner_service, digest_algorithm, digest_hex, media_type,
               length_bytes, created_at)
-         values ($1, $2, $3, $4, 'sha256', $5, $6, $7,
-                 transaction_timestamp())
-         on conflict (run_id, kind) do update set
-             digest_hex = excluded.digest_hex, media_type = excluded.media_type,
-             length_bytes = excluded.length_bytes",
+          values ($1, $2, $3, $4, 'sha256', $5, $6, $7,
+                  transaction_timestamp())",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(run_id)

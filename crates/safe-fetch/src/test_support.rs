@@ -34,7 +34,11 @@ impl SafeFetcher {
         Ok(Self {
             client,
             store,
-            admission: Admission::new(config.global_concurrency, config.per_host_concurrency),
+            admission: Admission::new(
+                config.global_concurrency,
+                config.per_host_concurrency,
+                std::time::Duration::from_millis(config.per_host_min_interval_ms),
+            ),
             resolver: None,
             config,
         })

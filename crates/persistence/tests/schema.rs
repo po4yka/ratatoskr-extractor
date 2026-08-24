@@ -29,6 +29,7 @@ async fn owned_schema_applies_once_with_all_item_six_tables()
             "fetches",
             "inbox_events",
             "outbox_events",
+            "provider_resolutions",
             "sources",
         ]
     );

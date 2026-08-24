@@ -61,7 +61,7 @@ create index extraction_runs_queued_idx on extractor.extraction_runs (queued_at)
 
 create table extractor.fetches (
     fetch_id             uuid        primary key,
-    run_id               uuid        not null unique references extractor.extraction_runs (run_id),
+    run_id               uuid        not null references extractor.extraction_runs (run_id),
     final_url            text        not null,
     http_status          integer     not null,
     media_type           text        not null,
@@ -91,8 +91,7 @@ create table extractor.artifacts (
     constraint artifact_kind_is_known check (kind in ('raw_source', 'document_ir', 'diagnostics')),
     constraint artifact_is_extractor_owned check (owner_service = 'ratatoskr-extractor'),
     constraint artifact_digest_is_sha256 check (digest_algorithm = 'sha256' and digest_hex ~ '^[0-9a-f]{64}$'),
-    constraint artifact_length_is_non_negative check (length_bytes >= 0),
-    unique (run_id, kind)
+    constraint artifact_length_is_non_negative check (length_bytes >= 0)
 );
 
 create table extractor.candidates (
@@ -114,6 +113,18 @@ create table extractor.candidates (
 );
 
 create unique index candidates_one_selected_per_run_idx on extractor.candidates (run_id) where selected;
+
+create table extractor.provider_resolutions (
+    step_id        uuid        primary key,
+    run_id         uuid        not null references extractor.extraction_runs (run_id),
+    ordinal        integer     not null,
+    kind           text        not null,
+    outcome        text,
+    failure_class  text,
+    resolved_url   text,
+    created_at     timestamptz not null default now(),
+    constraint provider_resolution_kind_is_known check (kind in ('provider_attempt', 'resolved_target', 'html_fallback'))
+);
 
 create table extractor.outbox_events (
     outbox_id             uuid        primary key,

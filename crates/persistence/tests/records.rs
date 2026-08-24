@@ -9,7 +9,7 @@ use ratatoskr_identifiers::{
 };
 
 #[tokio::test]
-async fn run_artifacts_and_candidates_are_owner_scoped_and_idempotent()
+async fn fact_rows_are_owner_scoped_and_candidate_upserts_stay_unique()
 -> Result<(), Box<dyn std::error::Error>> {
     let database = extractor_persistence::test_support::TestDatabase::create().await?;
     let (run_id, owner_id) = seed_run(database.database.pool()).await?;
@@ -98,9 +98,11 @@ async fn run_artifacts_and_candidates_are_owner_scoped_and_idempotent()
     database.cleanup().await?;
 
     assert!(refused.into_iter().all(std::convert::identity));
-    for (table, count) in counts {
-        assert_eq!(count, 1, "{table}");
-    }
+    assert_eq!(
+        counts,
+        vec![("fetches", 2), ("artifacts", 2), ("candidates", 1)],
+        "fetch and artifact facts append per call while candidate upserts stay idempotent"
+    );
     assert_eq!(owner, "ratatoskr-extractor");
     assert_eq!(forbidden, 0);
     Ok(())

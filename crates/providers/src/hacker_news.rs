@@ -2,10 +2,10 @@
 
 use ratatoskr_document_contracts::DocumentBlock;
 
-use extractor_document_ir::{CandidateDecision, evaluate_plain_text, plain_text_fragment};
+use extractor_document_ir::{evaluate_plain_text, plain_text_fragment};
 use serde::Deserialize;
 
-use crate::{ProviderError, ProviderLimits};
+use crate::{AdapterExtraction, ProviderError, ProviderLimits};
 
 /// Stable extraction strategy recorded for the Hacker News adapter.
 pub const HACKER_NEWS_STRATEGY: &str = "hacker_news_item";
@@ -17,9 +17,13 @@ pub(crate) struct AlgoliaItem {
     pub id: Option<i64>,
     pub text: Option<String>,
     pub title: Option<String>,
+    /// Canonical external article URL for link posts.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
-/// Converts one Algolia item payload into ordered blocks and the shared candidate decision.
+/// Converts one Algolia item payload into its title, the canonical external article URL when the
+/// item carries one, ordered blocks and the shared candidate decision.
 ///
 /// # Errors
 ///
@@ -27,7 +31,7 @@ pub(crate) struct AlgoliaItem {
 pub(crate) fn from_algolia(
     bytes: &[u8],
     limits: &ProviderLimits,
-) -> Result<(Option<String>, Vec<DocumentBlock>, CandidateDecision), ProviderError> {
+) -> Result<AdapterExtraction, ProviderError> {
     if bytes.len() > limits.max_input_bytes {
         return Err(ProviderError::ResourceLimit);
     }
@@ -43,7 +47,7 @@ pub(crate) fn from_algolia(
     push_fragment(root.text.as_deref(), limits, &mut blocks)?;
     collect_comments(&root.children, limits, &mut blocks)?;
     let decision = evaluate_plain_text(HACKER_NEWS_STRATEGY, &blocks, Some(&title));
-    Ok((Some(title), blocks, decision))
+    Ok((Some(title), root.url.clone(), blocks, decision))
 }
 
 fn required_title(root: &AlgoliaItem) -> Result<String, ProviderError> {

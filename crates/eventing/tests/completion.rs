@@ -74,7 +74,8 @@ async fn completed_document_and_report_commit_with_one_run()
             &document,
             &ir_blob,
             &fetch,
-            &candidates
+            &candidates,
+            &[],
         )
         .await?,
         Completion::Applied
@@ -86,7 +87,8 @@ async fn completed_document_and_report_commit_with_one_run()
             &document,
             &ir_blob,
             &fetch,
-            &candidates
+            &candidates,
+            &[],
         )
         .await?,
         Completion::Duplicate

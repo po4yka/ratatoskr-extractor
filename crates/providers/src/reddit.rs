@@ -2,10 +2,10 @@
 
 use ratatoskr_document_contracts::DocumentBlock;
 
-use extractor_document_ir::{CandidateDecision, evaluate_plain_text};
+use extractor_document_ir::evaluate_plain_text;
 use serde::Deserialize;
 
-use crate::{ProviderError, ProviderLimits};
+use crate::{AdapterExtraction, ProviderError, ProviderLimits};
 
 /// Stable extraction strategy recorded for the Reddit adapter.
 pub const REDDIT_STRATEGY: &str = "reddit_post";
@@ -35,13 +35,17 @@ struct PostingData {
     selftext: Option<String>,
     #[serde(default)]
     title: Option<String>,
+    /// Canonical external article URL carried by link posts.
+    #[serde(default)]
+    url: Option<String>,
     /// Nested replies arrive either as an empty string or as a full listing; they stay
     /// untyped here and recurse through [`walk_replies`].
     #[serde(default)]
     replies: Option<serde_json::Value>,
 }
 
-/// Converts one Reddit listing payload into ordered blocks and the shared candidate decision.
+/// Converts one Reddit listing payload into its title, the canonical external article URL for
+/// link posts, ordered blocks and the shared candidate decision.
 ///
 /// # Errors
 ///
@@ -49,7 +53,7 @@ struct PostingData {
 pub(crate) fn from_listings(
     bytes: &[u8],
     limits: &ProviderLimits,
-) -> Result<(Option<String>, Vec<DocumentBlock>, CandidateDecision), ProviderError> {
+) -> Result<AdapterExtraction, ProviderError> {
     let listings =
         serde_json::from_slice::<Vec<Listing>>(bytes).map_err(|_| ProviderError::Schema)?;
     let mut postings = listings
@@ -66,6 +70,7 @@ pub(crate) fn from_listings(
         .filter(|title| !title.is_empty())
         .ok_or(ProviderError::Schema)?
         .to_owned();
+    let external_url = post.data.url.clone();
 
     let mut blocks = vec![DocumentBlock::Heading {
         level: 1,
@@ -90,7 +95,7 @@ pub(crate) fn from_listings(
     }
 
     let decision = evaluate_plain_text(REDDIT_STRATEGY, &blocks, Some(&title));
-    Ok((Some(title), blocks, decision))
+    Ok((Some(title), external_url, blocks, decision))
 }
 
 /// Collects comment postings out of a replies value that is a full listing object.

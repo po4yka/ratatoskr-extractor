@@ -160,6 +160,9 @@ pub struct FetchConfig {
     pub global_concurrency: usize,
     /// Maximum simultaneous operations for one host.
     pub per_host_concurrency: usize,
+    /// Minimum start spacing between requests to one host (zero disables pacing).
+    #[serde(default)]
+    pub per_host_min_interval_ms: u64,
 }
 
 /// Bounded process shutdown configuration.
@@ -258,6 +261,7 @@ impl ExtractorConfig {
                 max_retries: 2,
                 global_concurrency: 64,
                 per_host_concurrency: 8,
+                per_host_min_interval_ms: 0,
             },
             parser: ParserConfig {
                 max_input_bytes: 50 * 1_024 * 1_024,

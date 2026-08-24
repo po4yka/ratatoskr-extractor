@@ -68,6 +68,7 @@ async fn single_candidate_completion_commits_like_html() -> Result<(), Box<dyn s
         &ir,
         &fetch,
         &extraction.candidates,
+        &[],
     )
     .await?;
 
@@ -130,7 +131,15 @@ async fn quality_rejection_records_explicit_class() -> Result<(), Box<dyn std::e
         return Err("the scanned fixture must degrade".into());
     };
     let fetch = pdf_fetch(&run.url, &raw);
-    reject_quality(pool, run.run_id, &fetch, &candidates, "pdf_no_text_layer").await?;
+    reject_quality(
+        pool,
+        run.run_id,
+        &fetch,
+        &candidates,
+        "pdf_no_text_layer",
+        &[],
+    )
+    .await?;
 
     let outcome: (Option<String>, String) = sqlx::query_as(
         "select last_error_class, status from extractor.extraction_runs where run_id = $1",
@@ -265,6 +274,7 @@ async fn reddit_run_completes_from_json() -> Result<(), Box<dyn std::error::Erro
         &store,
         &config.providers,
         &fetcher,
+        &config.parser,
         extractor_providers::SourceRoute::Reddit,
         &address,
         &run,
@@ -335,6 +345,7 @@ async fn provider_non_json_fails_explicitly() -> Result<(), Box<dyn std::error::
         &store,
         &config.providers,
         &fetcher,
+        &config.parser,
         extractor_providers::SourceRoute::Reddit,
         &address,
         &run,
@@ -347,11 +358,37 @@ async fn provider_non_json_fails_explicitly() -> Result<(), Box<dyn std::error::
     .bind(run.run_id)
     .fetch_one(pool)
     .await?;
+    assert_eq!(outcome.0, "failed");
+    assert_eq!(outcome.1.as_deref(), Some("fetch"));
+    let steps: Vec<(String, Option<String>)> = sqlx::query_as(
+        "select kind, failure_class from extractor.provider_resolutions
+          where run_id = $1 order by ordinal",
+    )
+    .bind(run.run_id)
+    .fetch_all(pool)
+    .await?;
     assert_eq!(
-        outcome,
-        ("failed".to_owned(), Some("provider_response".to_owned())),
-        "an anti-bot challenge must fail as a typed provider response"
+        steps,
+        vec![
+            (
+                "provider_attempt".to_string(),
+                Some("provider_response".to_string())
+            ),
+            ("html_fallback".to_string(), Some("fetch".to_string())),
+        ],
+        "the challenge is recorded as a typed provider failure and the single fallback attempt \
+         terminates the run"
     );
+    let (fetch_total,): (i64,) =
+        sqlx::query_as("select count(*) from extractor.fetches where run_id = $1")
+            .bind(run.run_id)
+            .fetch_one(pool)
+            .await?;
+    assert_eq!(
+        fetch_total, 1,
+        "only the provider payload is fetched; the unreachable original sends no request"
+    );
+    assert_eq!(server.request_count(), 1);
     database.cleanup().await?;
     Ok(())
 }
