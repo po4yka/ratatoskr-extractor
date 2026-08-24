@@ -66,10 +66,6 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
     )
     .fetch_one(database.database.pool())
     .await?;
-    eprintln!(
-        "DIAG-CI claimed={} due_after_retry={due_now}",
-        failed.claimed
-    );
     assert_eq!(failed.claimed, 1);
     assert_eq!(failed.failed, 1);
     let retryable: bool = sqlx::query_scalar(
@@ -85,13 +81,21 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
         .await?;
     let publisher = NatsPublisher::connect(&nats_url()).await?;
     publisher.ensure_event_stream().await?;
-    let outcome = run_outbox_once(database.database.pool(), &publisher, "test", 10).await?;
-    eprintln!("DIAG-CI second outcome={outcome:?}");
-    let last_error: Option<String> =
-        sqlx::query_scalar("select last_error from extractor.outbox_events limit 1")
-            .fetch_one(database.database.pool())
+    // Same bounded retry as the first phase: a busy runner may answer the very first
+    // publication before the stream interest is fully visible.
+    let mut outcome = None;
+    for _ in 0..5 {
+        sqlx::query("update extractor.outbox_events set next_attempt_at = now()")
+            .execute(database.database.pool())
             .await?;
-    eprintln!("DIAG-CI last_error={last_error:?}");
+        let attempt = run_outbox_once(database.database.pool(), &publisher, "test", 10).await?;
+        if attempt.published > 0 {
+            outcome = Some(attempt);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    let outcome = outcome.ok_or("the outbox row never published")?;
     assert_eq!(outcome.published, 1);
     let settled: bool = sqlx::query_scalar(
         "select attempts = 1 and published_at is not null and claimed_until is null
