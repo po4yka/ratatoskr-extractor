@@ -2,11 +2,12 @@
 
 use std::path::Path;
 
-use extractor_core::{ExtractorConfig, load, load_from};
+use extractor_core::{ConfigError, ExtractorConfig, load, load_from};
 use figment::Figment;
 use figment::Jail;
 use figment::providers::Serialized;
 use secrecy::ExposeSecret as _;
+use serde_json::json;
 
 #[test]
 fn defaults_are_finite_and_security_cannot_be_disabled() -> Result<(), serde_json::Error> {
@@ -120,5 +121,137 @@ fn rendering_is_off_by_default_and_budgets_parse() -> Result<(), Box<dyn std::er
     ));
     let overridden = load_from(&base.merge(("render.enabled", true)))?;
     assert!(overridden.render.enabled);
+    Ok(())
+}
+
+#[test]
+fn youtube_defaults_bound_transcripts_and_gate_media() {
+    let config = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert_eq!(config.youtube.transcript.languages, ["en"]);
+    assert!(
+        !config.youtube.media.enabled,
+        "media archival must stay off by default"
+    );
+    assert_eq!(
+        config.youtube.media.max_item_bytes,
+        2 * 1_024 * 1_024 * 1_024
+    );
+    assert_eq!(
+        config.youtube.media.total_budget_bytes,
+        8 * 1_024 * 1_024 * 1_024
+    );
+    assert_eq!(config.youtube.media.retention_hours, 24);
+    assert_eq!(config.youtube.media.timeout_secs, 900);
+    assert_eq!(config.youtube.media.max_height, 1080);
+    assert_eq!(config.youtube.media.binary_path, "yt-dlp");
+}
+
+#[test]
+#[allow(
+    clippy::result_large_err,
+    reason = "Figment Jail fixes the callback error type to figment::Error"
+)]
+fn youtube_environment_overrides_reach_transcripts_and_media() -> Result<(), figment::Error> {
+    Jail::try_with(|jail| {
+        jail.set_env(
+            "RATATOSKR__BLOBS__ROOT",
+            "/tmp/ratatoskr-youtube-test/blobs",
+        );
+        jail.set_env(
+            "RATATOSKR__DATABASE__URL",
+            "postgres://extractor:extractor@127.0.0.1:5434/extractor",
+        );
+        jail.set_env("RATATOSKR__YOUTUBE__TRANSCRIPT__LANGUAGES", "[ru, en]");
+        jail.set_env("RATATOSKR__YOUTUBE__MEDIA__MAX_ITEM_BYTES", "123");
+
+        let config = match load() {
+            Ok(config) => config,
+            Err(error) => return Err(error.to_string().into()),
+        };
+        assert_eq!(config.youtube.transcript.languages, ["ru", "en"]);
+        assert_eq!(config.youtube.media.max_item_bytes, 123);
+        Ok(())
+    })?;
+    Ok(())
+}
+
+fn youtube_violation_report(
+    overrides: &[(&str, serde_json::Value)],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut figment = Figment::from(Serialized::defaults(ExtractorConfig::built_in(Path::new(
+        "/var/lib/ratatoskr-extractor/blobs",
+    ))))
+    .merge((
+        "database.url",
+        "postgres://extractor:extractor@127.0.0.1:5434/extractor",
+    ));
+    for (key, value) in overrides {
+        figment = figment.merge((*key, value.clone()));
+    }
+    match load_from(&figment) {
+        Ok(_) => Err("youtube configuration must be rejected".into()),
+        Err(error @ ConfigError::Invalid(_)) => Ok(error.report()),
+        Err(error) => Err(Box::new(error)),
+    }
+}
+
+#[test]
+fn invalid_youtube_settings_are_reported_without_their_values()
+-> Result<(), Box<dyn std::error::Error>> {
+    for (overrides, key, rule) in [
+        (
+            vec![("youtube.transcript.languages", json!([]))],
+            "youtube.transcript.languages",
+            "must contain at least one language code",
+        ),
+        (
+            vec![("youtube.media.max_item_bytes", json!(0))],
+            "youtube.media.max_item_bytes",
+            "must be greater than zero",
+        ),
+        (
+            vec![("youtube.media.total_budget_bytes", json!(0))],
+            "youtube.media.total_budget_bytes",
+            "must be greater than zero",
+        ),
+        (
+            vec![
+                ("youtube.media.max_item_bytes", json!(200)),
+                ("youtube.media.total_budget_bytes", json!(100)),
+            ],
+            "youtube.media.total_budget_bytes",
+            "must not be smaller than the per-item limit",
+        ),
+        (
+            vec![("youtube.media.retention_hours", json!(0))],
+            "youtube.media.retention_hours",
+            "must be greater than zero",
+        ),
+        (
+            vec![("youtube.media.timeout_secs", json!(0))],
+            "youtube.media.timeout_secs",
+            "must be greater than zero",
+        ),
+    ] {
+        let report = youtube_violation_report(&overrides)?;
+        assert!(report.contains(key), "report must name {key}:\n{report}");
+        assert!(
+            report.contains(rule),
+            "report must state the rule for {key}:\n{report}"
+        );
+    }
+
+    let budget_report = youtube_violation_report(&[
+        ("youtube.media.max_item_bytes", json!(200)),
+        ("youtube.media.total_budget_bytes", json!(100)),
+    ])?;
+    assert!(
+        !budget_report.contains("200"),
+        "per-item value leaked into the report:\n{budget_report}"
+    );
+    assert!(
+        !budget_report.contains("100"),
+        "budget value leaked into the report:\n{budget_report}"
+    );
     Ok(())
 }

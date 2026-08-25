@@ -1,7 +1,7 @@
 //! The per-run extraction pipeline shared by the worker loop and integration tests.
 
 use extractor_blob_store::BlobStore;
-use extractor_core::{ParserConfig, PdfConfig, ProvidersConfig, RenderConfig};
+use extractor_core::{ParserConfig, PdfConfig, ProvidersConfig, RenderConfig, YoutubeConfig};
 use extractor_document_ir::{
     DocumentIrError, HtmlDocumentInput, HtmlExtraction, ParseLimits, from_html,
 };
@@ -18,7 +18,10 @@ use extractor_providers::{
     ProviderError, ProviderInput, ProviderLimits, SourceRoute, from_provider, provider_request,
 };
 use extractor_safe_fetch::{CacheOutcome, FetchRequest, FetchResult, SafeFetcher};
+use extractor_youtube::resolve_identity;
 use ratatoskr_document_contracts::DocumentAddress;
+
+use crate::youtube_pipeline::complete_youtube;
 
 /// Why the process or one pipeline step failed.
 #[derive(Debug, thiserror::Error)]
@@ -76,12 +79,14 @@ pub async fn process_run(
     pdf: &PdfConfig,
     providers: &ProvidersConfig,
     render: &RenderConfig,
+    youtube: &YoutubeConfig,
     bus: &async_nats::jetstream::Context,
     run: &extractor_eventing::QueuedRun,
 ) -> Result<(), ProcessError> {
     // Provider routing happens before any fetch so a mapped provider run performs exactly one
     // network operation against its native representation; unmappable URLs fall through to the
-    // ordinary path with the original URL.
+    // ordinary path with the original URL. YouTube routes resolve a video identity first; a URL
+    // that names no video takes the ordinary path with the original URL unchanged.
     let route = match run.classification.as_str() {
         "hacker_news" => Some(SourceRoute::HackerNews),
         "reddit" => Some(SourceRoute::Reddit),
@@ -94,6 +99,17 @@ pub async fn process_run(
             pool, store, providers, retriever, parser, route, address, run,
         )
         .await;
+    }
+    if run.classification == "youtube" {
+        return match resolve_identity(&run.url) {
+            Ok(identity) => {
+                complete_youtube(pool, store, youtube, parser, retriever, run, &identity).await
+            }
+            Err(_) => {
+                fallback_to_generic_html(parser, pool, store, retriever, run, "youtube_no_video_id")
+                    .await
+            }
+        };
     }
     let fetched = match retriever.fetch(FetchRequest::new(&run.url)).await {
         Ok(fetched) => fetched,

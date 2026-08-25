@@ -13,6 +13,7 @@ members = [
     "crates/telemetry",
     "crates/test-support",
     "crates/url-routing",
+    "crates/youtube",
     "services/browser-worker",
     "services/extractor",
 ]
@@ -38,6 +39,7 @@ ratatoskr-extractor-safe-fetch = { version = "0.1.0", path = "crates/safe-fetch"
 ratatoskr-extractor-telemetry = { version = "0.1.0", path = "crates/telemetry" }
 ratatoskr-extractor-test-support = { version = "0.1.0", path = "crates/test-support" }
 ratatoskr-extractor-url-routing = { version = "0.1.0", path = "crates/url-routing" }
+ratatoskr-extractor-youtube = { version = "0.1.0", path = "crates/youtube" }
 
 ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
 ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }

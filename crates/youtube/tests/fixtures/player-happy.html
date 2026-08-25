@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test Video Title - YouTube</title></head>
+<body>
+<script>
+var ytInitialPlayerResponse = {
+  "videoDetails": {
+    "title": "Test Video Title",
+    "author": "Example Channel",
+    "lengthSeconds": "2123",
+    "channelId": "UCexample-channel-id"
+  },
+  "captions": {
+    "playerCaptionTracks": [
+      {
+        "baseUrl": "https://www.youtube.com/api/timedtext?x=1",
+        "languageCode": "en",
+        "name": {"simpleText": "English"}
+      },
+      {
+        "baseUrl": "https://www.youtube.com/api/timedtext?x=2",
+        "languageCode": "ru",
+        "kind": "asr",
+        "name": {"simpleText": "Russian (auto)"}
+      }
+    ],
+    "audioTracks": []
+  },
+  "playabilityStatus": {"status": "OK", "unknownWrapper": {"deep": [1, 2, 3]}}
+};
+</script>
+</body>
+</html>

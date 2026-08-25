@@ -35,6 +35,8 @@ pub struct ExtractorConfig {
     pub shutdown: ShutdownConfig,
     /// Logging and trace export.
     pub telemetry: TelemetryConfig,
+    /// `YouTube` adapter limits and gated media archival settings.
+    pub youtube: YoutubeConfig,
 }
 
 /// Operator listener configuration.
@@ -130,6 +132,44 @@ pub struct PdfConfig {
     pub max_pages: usize,
     /// Maximum accumulated extracted text bytes.
     pub max_text_bytes: usize,
+}
+
+/// `YouTube` adapter configuration.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct YoutubeConfig {
+    /// Transcript language preferences supplied to the adapter.
+    pub transcript: YoutubeTranscriptConfig,
+    /// Gated archival of `YouTube` media artifacts.
+    pub media: YoutubeMediaConfig,
+}
+
+/// Transcript language preferences for the `YouTube` adapter.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct YoutubeTranscriptConfig {
+    /// Preferred caption languages in priority order.
+    pub languages: Vec<String>,
+}
+
+/// Gated `YouTube` media archival budgets.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct YoutubeMediaConfig {
+    /// Master switch; when false the extractor never archives media.
+    pub enabled: bool,
+    /// Maximum archived bytes for one media item.
+    pub max_item_bytes: u64,
+    /// Total byte budget across archived media items.
+    pub total_budget_bytes: u64,
+    /// Hours an archived media item may remain before deletion.
+    pub retention_hours: u64,
+    /// Whole-download budget for one media item.
+    pub timeout_secs: u64,
+    /// Maximum video height accepted for archival.
+    pub max_height: u32,
+    /// External downloader binary invoked by the adapter.
+    pub binary_path: String,
 }
 
 /// Bounded network retrieval configuration.
@@ -289,6 +329,20 @@ impl ExtractorConfig {
                 log_filter: "info,tower_http=info,hyper=warn,h2=warn".to_owned(),
                 otlp: None,
             },
+            youtube: YoutubeConfig {
+                transcript: YoutubeTranscriptConfig {
+                    languages: vec!["en".to_owned()],
+                },
+                media: YoutubeMediaConfig {
+                    enabled: false,
+                    max_item_bytes: 2 * 1_024 * 1_024 * 1_024,
+                    total_budget_bytes: 8 * 1_024 * 1_024 * 1_024,
+                    retention_hours: 24,
+                    timeout_secs: 900,
+                    max_height: 1080,
+                    binary_path: "yt-dlp".to_owned(),
+                },
+            },
         }
     }
 }
@@ -366,6 +420,7 @@ fn validate(config: &ExtractorConfig) -> Vec<ConfigViolation> {
     validate_database(&config.database, &mut violations);
     validate_bus(&config.bus, config.fetch.total_timeout_ms, &mut violations);
     validate_fetch(&config.fetch, &mut violations);
+    validate_youtube(&config.youtube, &mut violations);
     for (valid, key) in [
         (config.parser.max_input_bytes > 0, "parser.max_input_bytes"),
         (config.parser.max_dom_nodes > 0, "parser.max_dom_nodes"),
@@ -513,6 +568,38 @@ fn validate_fetch(config: &FetchConfig, violations: &mut Vec<ConfigViolation>) {
         config.max_decoded_bytes >= config.max_wire_bytes,
         "fetch.max_decoded_bytes",
         "must not be smaller than the wire-byte limit",
+        violations,
+    );
+}
+
+fn validate_youtube(config: &YoutubeConfig, violations: &mut Vec<ConfigViolation>) {
+    require(
+        !config.transcript.languages.is_empty(),
+        "youtube.transcript.languages",
+        "must contain at least one language code",
+        violations,
+    );
+    for (valid, key) in [
+        (
+            config.media.max_item_bytes > 0,
+            "youtube.media.max_item_bytes",
+        ),
+        (
+            config.media.total_budget_bytes > 0,
+            "youtube.media.total_budget_bytes",
+        ),
+        (
+            config.media.retention_hours > 0,
+            "youtube.media.retention_hours",
+        ),
+        (config.media.timeout_secs > 0, "youtube.media.timeout_secs"),
+    ] {
+        require(valid, key, "must be greater than zero", violations);
+    }
+    require(
+        config.media.total_budget_bytes >= config.media.max_item_bytes,
+        "youtube.media.total_budget_bytes",
+        "must not be smaller than the per-item limit",
         violations,
     );
 }

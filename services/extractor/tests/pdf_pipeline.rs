@@ -394,6 +394,10 @@ async fn provider_non_json_fails_explicitly() -> Result<(), Box<dyn std::error::
 }
 
 #[tokio::test]
+#[allow(
+    clippy::large_futures,
+    reason = "the hermetic scenario holds one full resource set per test future"
+)]
 async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std::error::Error>> {
     let server = ScriptedServer::start(vec![
         ScriptedResponse::chunks([bytes::Bytes::from_static(TEXT_PDF)]).with_header(
@@ -458,6 +462,10 @@ async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std
 }
 
 #[tokio::test]
+#[allow(
+    clippy::large_futures,
+    reason = "the hermetic scenario holds one full resource set per test future"
+)]
 async fn pdf_failure_classes_reach_terminal_state() -> Result<(), Box<dyn std::error::Error>> {
     for (fixture, expected_class) in [(ENCRYPTED_PDF, "pdf_encrypted"), (CORRUPT_PDF, "parse")] {
         let server = ScriptedServer::start(vec![
@@ -515,6 +523,10 @@ async fn pdf_failure_classes_reach_terminal_state() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+#[allow(
+    clippy::large_futures,
+    reason = "the hermetic scenario holds one full resource set per test future"
+)]
 async fn process_pdf_run(
     pool: &sqlx::PgPool,
     fetcher: &SafeFetcher,
@@ -531,6 +543,7 @@ async fn process_pdf_run(
         &config.pdf,
         &config.providers,
         &config.render,
+        &config.youtube,
         bus,
         run,
     )
@@ -647,6 +660,10 @@ fn nats_url() -> String {
 }
 
 #[tokio::test]
+#[allow(
+    clippy::large_futures,
+    reason = "the hermetic scenario holds one full resource set per test future"
+)]
 async fn empty_shell_escalates_and_completes_from_rendered_dom()
 -> Result<(), Box<dyn std::error::Error>> {
     const SHELL: &[u8] =

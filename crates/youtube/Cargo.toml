@@ -1,0 +1,27 @@
+[package]
+name = "ratatoskr-extractor-youtube"
+description = "Bounded YouTube transcript conversion into Ratatoskr Document IR."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_youtube"
+path = "src/lib.rs"
+
+[dependencies]
+ratatoskr-document-contracts.workspace = true
+ratatoskr-extractor-document-ir.workspace = true
+ratatoskr-identifiers.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+ratatoskr-extractor-test-support.workspace = true
+
+[lints]
+workspace = true

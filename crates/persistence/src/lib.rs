@@ -7,8 +7,9 @@ mod records;
 pub mod test_support;
 
 pub use records::{
-    ArtifactKind, ArtifactRecord, CandidateRecord, FetchRecord, record_artifact, record_candidate,
-    record_fetch,
+    ArtifactKind, ArtifactRecord, CandidateRecord, FetchRecord, MediaArchiveRecord,
+    delete_expired_media, has_unexpired_media_for_video, record_artifact, record_candidate,
+    record_fetch, reserve_media_archive, unexpired_media_bytes,
 };
 
 use sqlx::postgres::PgPoolOptions;

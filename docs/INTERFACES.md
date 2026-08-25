@@ -14,7 +14,8 @@ extractor-owned `BlobRef` values. No local filesystem path crosses the boundary.
 ## Internal boundaries
 
 - `Fetcher`: one safe HTTP transaction sequence with limits and conditional cache.
-- `SourceAdapter`: provider-native or format-specific conversion.
+- `SourceAdapter`: provider-native or format-specific conversion (Hacker News, Reddit,
+  YouTube transcripts, direct PDF).
 - `ArticleExtractor`: candidate from one parsed document.
 - `QualityEvaluator`: deterministic score/reasons/threshold.
 - `BrowserRenderer`: isolated final DOM/network evidence, not interpretation.

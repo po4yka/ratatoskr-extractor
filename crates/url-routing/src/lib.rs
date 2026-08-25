@@ -315,7 +315,10 @@ pub fn classify(url: &NormalizedUrl) -> SourceRoute {
         SourceRoute::Reddit
     } else if host_matches(host, "news.ycombinator.com") {
         SourceRoute::HackerNews
-    } else if host_matches(host, "youtube.com") || host_matches(host, "youtu.be") {
+    } else if host_matches(host, "youtube.com")
+        || host_matches(host, "youtu.be")
+        || host_matches(host, "youtube-nocookie.com")
+    {
         SourceRoute::YouTube
     } else if url.normalized.path().to_ascii_lowercase().ends_with(".pdf") {
         SourceRoute::Pdf

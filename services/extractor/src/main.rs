@@ -6,7 +6,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use extractor_blob_store::BlobStore;
-use extractor_core::{ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig, RenderConfig};
+use extractor_core::{
+    ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig, RenderConfig, YoutubeConfig,
+};
 use extractor_eventing::{NatsPublisher, claim_queued_run, run_command_consumer, run_outbox_once};
 use extractor_persistence::Database;
 use extractor_safe_fetch::SafeFetcher;
@@ -97,45 +99,17 @@ async fn run_initialized(
     let background_cancel = CancellationToken::new();
     let server_cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
-    let bus = publisher.context().clone();
-    tasks.spawn({
-        let publisher = publisher.clone();
-        let pool = database.pool().clone();
-        let durable = config.bus.durable_name.clone();
-        let cancellation = background_cancel.child_token();
-        async move {
-            run_command_consumer(&publisher, &pool, &durable, cancellation).await?;
-            Ok::<_, ProcessError>(())
-        }
-    });
-    tasks.spawn(outbox_loop(
-        database.pool().clone(),
-        publisher.clone(),
-        config.bus.poll_interval_ms,
-        config.bus.outbox_batch_size,
-        background_cancel.child_token(),
-    ));
-    tasks.spawn(dependency_loop(
-        database.pool().clone(),
-        publisher.clone(),
-        health.clone(),
-        config.bus.poll_interval_ms,
-        background_cancel.child_token(),
-    ));
-    tasks.spawn(worker_loop(
-        database.pool().clone(),
+    spawn_background_loops(
+        &mut tasks,
+        config,
+        &database,
+        &publisher,
         fetcher,
         store,
-        config.parser.clone(),
-        config.pdf.clone(),
-        config.providers.clone(),
-        config.render.clone(),
-        bus,
-        config.bus.worker_lease_seconds,
-        config.bus.poll_interval_ms,
+        health.clone(),
         admission.clone(),
-        background_cancel.child_token(),
-    ));
+        &background_cancel,
+    );
     tasks.spawn({
         let cancellation = server_cancel.child_token();
         async move {
@@ -167,6 +141,64 @@ async fn run_initialized(
         Some(Err(error)) => Err(error),
         None => Ok(()),
     }
+}
+
+/// Spawns the four long-lived loops: command consumer, outbox, dependency probe, and worker.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one handle per process resource, mirroring run_initialized's ownership split"
+)]
+fn spawn_background_loops(
+    tasks: &mut JoinSet<Result<(), ProcessError>>,
+    config: &ExtractorConfig,
+    database: &Database,
+    publisher: &NatsPublisher,
+    fetcher: SafeFetcher,
+    store: BlobStore,
+    health: RuntimeHealth,
+    admission: AdmissionController,
+    background_cancel: &CancellationToken,
+) {
+    let bus = publisher.context().clone();
+    tasks.spawn({
+        let publisher = publisher.clone();
+        let pool = database.pool().clone();
+        let durable = config.bus.durable_name.clone();
+        let cancellation = background_cancel.child_token();
+        async move {
+            run_command_consumer(&publisher, &pool, &durable, cancellation).await?;
+            Ok::<_, ProcessError>(())
+        }
+    });
+    tasks.spawn(outbox_loop(
+        database.pool().clone(),
+        publisher.clone(),
+        config.bus.poll_interval_ms,
+        config.bus.outbox_batch_size,
+        background_cancel.child_token(),
+    ));
+    tasks.spawn(dependency_loop(
+        database.pool().clone(),
+        publisher.clone(),
+        health,
+        config.bus.poll_interval_ms,
+        background_cancel.child_token(),
+    ));
+    tasks.spawn(worker_loop(
+        database.pool().clone(),
+        fetcher,
+        store,
+        config.parser.clone(),
+        config.pdf.clone(),
+        config.providers.clone(),
+        config.render.clone(),
+        config.youtube.clone(),
+        bus,
+        config.bus.worker_lease_seconds,
+        config.bus.poll_interval_ms,
+        admission,
+        background_cancel.child_token(),
+    ));
 }
 
 async fn outbox_loop(
@@ -229,6 +261,7 @@ async fn worker_loop(
     pdf: PdfConfig,
     providers: ProvidersConfig,
     render: RenderConfig,
+    youtube: YoutubeConfig,
     bus: async_nats::jetstream::Context,
     lease_seconds: i32,
     poll_interval_ms: u64,
@@ -262,6 +295,7 @@ async fn worker_loop(
                 &pdf,
                 &providers,
                 &render,
+                &youtube,
                 &bus,
                 &run,
             ) => result?,

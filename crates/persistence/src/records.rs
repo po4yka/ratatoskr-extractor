@@ -43,6 +43,8 @@ pub enum ArtifactKind {
     DocumentIr,
     /// Safe diagnostic artifact.
     Diagnostics,
+    /// Retention-bounded archived media.
+    ArchivedMedia,
 }
 
 impl ArtifactKind {
@@ -51,6 +53,7 @@ impl ArtifactKind {
             Self::RawSource => "raw_source",
             Self::DocumentIr => "document_ir",
             Self::Diagnostics => "diagnostics",
+            Self::ArchivedMedia => "archived_media",
         }
     }
 }
@@ -210,4 +213,179 @@ fn owned(result: &sqlx::postgres::PgQueryResult) -> Result<(), PersistenceError>
     } else {
         Ok(())
     }
+}
+
+/// Advisory-lock key serializing media-budget reservation across the service.
+///
+/// The value is an arbitrary fixed constant; only its stability matters.
+const MEDIA_BUDGET_LOCK_KEY: i64 = 0x596F_7574_7562_654D;
+
+/// One archived-media accounting row appended after its bytes are stored.
+///
+/// Ownership resolves through the owning run, which must already be terminal-succeeded.
+#[derive(Debug)]
+pub struct MediaArchiveRecord<'a> {
+    /// Owning extraction run.
+    pub run_id: uuid::Uuid,
+    /// Validated eleven-character video id.
+    pub video_id: &'a str,
+    /// Content-addressed reference of the stored bytes.
+    pub reference: &'a BlobRef,
+    /// Retention window in hours from now.
+    pub retention_hours: i32,
+}
+
+/// Sums unexpired archived-media bytes for budget accounting.
+///
+/// # Errors
+///
+/// Returns an error when `PostgreSQL` rejects the sum.
+pub async fn unexpired_media_bytes(pool: &PgPool) -> Result<i64, PersistenceError> {
+    let row = sqlx::query_scalar::<_, i64>(
+        "select coalesce(sum(length_bytes), 0)::bigint
+           from extractor.media_archives
+          where expires_at > transaction_timestamp()",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(PersistenceError::Query)?;
+    Ok(row)
+}
+
+/// Reports whether an unexpired archive already covers one video id.
+///
+/// # Errors
+///
+/// Returns an error when `PostgreSQL` rejects the lookup.
+pub async fn has_unexpired_media_for_video(
+    pool: &PgPool,
+    video_id: &str,
+) -> Result<bool, PersistenceError> {
+    let found = sqlx::query_scalar::<_, bool>(
+        "select exists (
+               select 1 from extractor.media_archives
+                where video_id = $1 and expires_at > transaction_timestamp()
+           )",
+    )
+    .bind(video_id)
+    .fetch_one(pool)
+    .await
+    .map_err(PersistenceError::Query)?;
+    Ok(found)
+}
+
+/// Reserves budget under the advisory lock and appends both accounting rows atomically.
+///
+/// Returns `false` when concurrent reservations consumed the remaining budget; no rows are
+/// written in that case. The caller stores bytes before reserving, so a lost race leaves at
+/// worst a content-addressed orphan file, which later sweeps may collect.
+///
+/// # Errors
+///
+/// Returns an error when `PostgreSQL` rejects the reservation.
+pub async fn reserve_media_archive(
+    pool: &PgPool,
+    record: &MediaArchiveRecord<'_>,
+    total_budget_bytes: i64,
+) -> Result<bool, PersistenceError> {
+    if record.reference.owner_service.as_str() != OWNER
+        || !matches!(record.reference.digest.algorithm, DigestAlgorithm::Sha256)
+    {
+        return Err(PersistenceError::InvalidArtifact);
+    }
+    let length = i64::try_from(record.reference.length_bytes)
+        .map_err(|_| PersistenceError::ValueOverflow)?;
+    let mut transaction = pool.begin().await.map_err(PersistenceError::Query)?;
+    sqlx::query("select pg_advisory_xact_lock($1)")
+        .bind(MEDIA_BUDGET_LOCK_KEY)
+        .execute(&mut *transaction)
+        .await
+        .map_err(PersistenceError::Query)?;
+    let used = sqlx::query_scalar::<_, i64>(
+        "select coalesce(sum(length_bytes), 0)::bigint
+           from extractor.media_archives
+          where expires_at > transaction_timestamp()",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(PersistenceError::Query)?;
+    if used.saturating_add(length) > total_budget_bytes {
+        return Ok(false);
+    }
+    sqlx::query(
+        "insert into extractor.artifacts
+             (artifact_id, run_id, kind, owner_service, digest_algorithm, digest_hex, media_type,
+              length_bytes, created_at)
+         select $1, r.run_id, 'archived_media', $3, 'sha256', $4, $5, $6, transaction_timestamp()
+           from extractor.extraction_runs r
+          where r.run_id = $2 and r.status = 'succeeded'",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(record.run_id)
+    .bind(OWNER)
+    .bind(record.reference.digest.hex.as_str())
+    .bind(record.reference.media_type.as_str())
+    .bind(length)
+    .execute(&mut *transaction)
+    .await
+    .map_err(PersistenceError::Query)?;
+    let inserted = sqlx::query(
+        "insert into extractor.media_archives
+             (media_id, run_id, video_id, digest_hex, media_type, length_bytes, created_at,
+              expires_at)
+         select $1, r.run_id, $3, $4, $5, $6, transaction_timestamp(),
+                transaction_timestamp() + make_interval(hours => $7::int)
+           from extractor.extraction_runs r
+          where r.run_id = $2 and r.status = 'succeeded'",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(record.run_id)
+    .bind(record.video_id)
+    .bind(record.reference.digest.hex.as_str())
+    .bind(record.reference.media_type.as_str())
+    .bind(length)
+    .bind(record.retention_hours)
+    .execute(&mut *transaction)
+    .await
+    .map_err(PersistenceError::Query)?;
+    owned(&inserted)?;
+    transaction
+        .commit()
+        .await
+        .map_err(PersistenceError::Query)?;
+    Ok(true)
+}
+
+/// Deletes expired accounting and artifact rows and returns the digest hex values whose stored
+/// bytes should be removed by the caller.
+///
+/// # Errors
+///
+/// Returns an error when `PostgreSQL` rejects the purge.
+pub async fn delete_expired_media(pool: &PgPool) -> Result<Vec<String>, PersistenceError> {
+    let digests = sqlx::query_scalar::<_, String>(
+        "select digest_hex from extractor.media_archives
+          where expires_at <= transaction_timestamp()",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(PersistenceError::Query)?;
+    sqlx::query(
+        "delete from extractor.artifacts a
+          using extractor.media_archives m
+          where a.digest_hex = m.digest_hex
+            and a.kind = 'archived_media'
+            and m.expires_at <= transaction_timestamp()",
+    )
+    .execute(pool)
+    .await
+    .map_err(PersistenceError::Query)?;
+    let removed = sqlx::query(
+        "delete from extractor.media_archives where expires_at <= transaction_timestamp()",
+    )
+    .execute(pool)
+    .await
+    .map_err(PersistenceError::Query)?;
+    let _ = removed;
+    Ok(digests)
 }

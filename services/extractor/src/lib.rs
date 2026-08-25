@@ -4,10 +4,17 @@
 
 mod pipeline;
 mod provider_continuation;
+mod youtube_media;
+pub mod youtube_pipeline;
 
 pub use pipeline::{
     ProcessError, complete_provider_for_test as _complete_provider_for_test, process_run,
 };
+pub use youtube_media::{
+    ArchivalOutcome, DownloadedMedia, MediaArchiver, MediaDownloadError, MediaDownloader,
+    YtDlpDownloader,
+};
+pub use youtube_pipeline::complete_youtube_for_test;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};

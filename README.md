@@ -6,8 +6,13 @@
 > bounded retrieval with per-host pacing, parse-once HTML candidates, deterministic quality
 > selection, Document IR, the durable PostgreSQL/JetStream pipeline, direct PDF extraction,
 > Hacker News/Reddit adapters that fetch each source's native JSON once and resolve link posts
-> through exactly one ordinary retrieval pass (with typed single-fallback degradation), and the
-> isolated browser worker with deterministic empty-shell escalation behind `render.enabled`.
+> through exactly one ordinary retrieval pass (with typed single-fallback degradation), the
+> isolated browser worker with deterministic empty-shell escalation behind `render.enabled`,
+> and the YouTube transcript adapter that resolves every documented URL form to one video
+> identity, retrieves a caption track under an explicit language preference (manual preferred
+> within a language), builds Document IR from transcript segments with extractor-owned timing
+> diagnostics, and archives media only behind a gated, byte-capped, retention-bounded
+> configuration.
 > OCR and delegated platform routes remain planned; scanned PDFs without a text layer are
 > recorded as an explicit degraded outcome.
 
@@ -45,6 +50,7 @@ crates/blob-store    extractor-owned content-addressed artifacts and BlobRef ver
 crates/safe-fetch    pooled HTTP, redirects, limits, decoding, cache validation, and retry
 crates/document-ir   bounded HTML5 parse-once candidates, quality selection, and shared Document IR
 crates/pdf           bounded direct PDF text extraction into the shared Document IR
+crates/youtube       bounded YouTube transcript conversion and gated media archival
 crates/persistence   finite PostgreSQL pool and the one editable extractor schema
 crates/eventing      typed command inbox, leased worker records, outbox, and JetStream ACKs
 crates/test-support  deterministic local network and storage fixtures
@@ -75,13 +81,20 @@ The ordinary path performs one network fetch. Candidate extractors compete over 
 
 ## Source classification
 
-Routing happens before generic article extraction. Direct PDF extraction and the Hacker News and
-Reddit adapters are implemented; remaining planned source adapters include:
+Routing happens before generic article extraction. Direct PDF extraction, the Hacker News and
+Reddit adapters, and the YouTube transcript adapter are implemented; remaining planned source
+adapters include:
 
 - ordinary HTML articles (fallback path);
-- YouTube transcript/media references;
 - platform URLs routed to GitHub, X, Instagram, Threads, Telegram, or AI-archive services;
 - user-supplied text and files.
+
+YouTube transcript timing stays extractor-owned: per-block time ranges live in a diagnostics
+artifact keyed by block index beside the raw timed-text blob, so reprocessing needs no network.
+Publishing timing through the shared block shape would be a coordinated contracts changeset in
+`ratatoskr-contracts`, refused today by the workspace `document-ir` boundary for service-private
+data. Archived media is off by default (`youtube.media.enabled`) and bounded by per-item and
+total byte caps with retention-based cleanup under the `media_archives` accounting table.
 
 Platform-specific services remain authoritative for authenticated account data. The extractor processes generic public content and files; it does not store provider credentials.
 

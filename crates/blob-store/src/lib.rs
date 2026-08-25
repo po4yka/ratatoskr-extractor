@@ -217,6 +217,22 @@ impl BlobStore {
         }
     }
 
+    /// Removes stored bytes by digest hex without requiring the original reference.
+    ///
+    /// Used by retention purge; missing files are reported as removed so sweeps stay idempotent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BlobStoreError`] when the digest is malformed or deletion fails.
+    pub async fn remove_digest(&self, digest_hex: &str) -> Result<(), BlobStoreError> {
+        let path = self.path_for_digest(digest_hex)?;
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(BlobStoreError::Io(error)),
+        }
+    }
+
     fn path_for_digest(&self, digest: &str) -> Result<PathBuf, BlobStoreError> {
         let prefix = digest
             .get(..2)

@@ -19,6 +19,22 @@ fn known_hosts_win_without_matching_lookalikes() -> Result<(), Box<dyn std::erro
             SourceRoute::HackerNews,
         ),
         ("https://youtu.be/example", SourceRoute::YouTube),
+        (
+            "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+            SourceRoute::YouTube,
+        ),
+        (
+            "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+            SourceRoute::YouTube,
+        ),
+        (
+            "https://m.youtube.com/shorts/dQw4w9WgXcQ",
+            SourceRoute::YouTube,
+        ),
+        (
+            "https://youtube-nocookie.com.example.test/watch?v=dQw4w9WgXcQ",
+            SourceRoute::GenericWeb,
+        ),
         ("https://cdn.example.com/report.PDF", SourceRoute::Pdf),
         (
             "https://github.com.example.test/project",

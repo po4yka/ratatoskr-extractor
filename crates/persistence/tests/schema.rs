@@ -28,6 +28,7 @@ async fn owned_schema_applies_once_with_all_item_six_tables()
             "extraction_runs",
             "fetches",
             "inbox_events",
+            "media_archives",
             "outbox_events",
             "provider_resolutions",
             "sources",

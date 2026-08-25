@@ -2783,6 +2783,7 @@ dependencies = [
  "ratatoskr-extractor-telemetry",
  "ratatoskr-extractor-test-support",
  "ratatoskr-extractor-url-routing",
+ "ratatoskr-extractor-youtube",
  "ratatoskr-identifiers",
  "ratatoskr-render-job",
  "secrecy",
@@ -2838,6 +2839,20 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
+ "url",
+]
+
+[[package]]
+name = "ratatoskr-extractor-youtube"
+version = "0.1.0"
+dependencies = [
+ "ratatoskr-document-contracts",
+ "ratatoskr-extractor-document-ir",
+ "ratatoskr-extractor-test-support",
+ "ratatoskr-identifiers",
+ "serde",
+ "serde_json",
+ "thiserror",
  "url",
 ]
 

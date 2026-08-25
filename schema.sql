@@ -88,11 +88,28 @@ create table extractor.artifacts (
     media_type       text        not null,
     length_bytes     bigint      not null,
     created_at       timestamptz not null,
-    constraint artifact_kind_is_known check (kind in ('raw_source', 'document_ir', 'diagnostics')),
+    constraint artifact_kind_is_known check (kind in ('raw_source', 'document_ir', 'diagnostics', 'archived_media')),
     constraint artifact_is_extractor_owned check (owner_service = 'ratatoskr-extractor'),
     constraint artifact_digest_is_sha256 check (digest_algorithm = 'sha256' and digest_hex ~ '^[0-9a-f]{64}$'),
     constraint artifact_length_is_non_negative check (length_bytes >= 0)
 );
+
+create table extractor.media_archives (
+    media_id      uuid        primary key,
+    run_id        uuid        not null references extractor.extraction_runs (run_id),
+    video_id      text        not null,
+    digest_hex    text        not null,
+    media_type    text        not null,
+    length_bytes  bigint      not null,
+    created_at    timestamptz not null,
+    expires_at    timestamptz not null,
+    constraint media_archives_video_id_is_bounded check (length(video_id) between 1 and 32),
+    constraint media_archives_digest_is_sha256 check (digest_hex ~ '^[0-9a-f]{64}$'),
+    constraint media_archives_length_is_positive check (length_bytes > 0),
+    constraint media_archives_expiry_follows_creation check (expires_at > created_at)
+);
+
+create index media_archives_expiry_idx on extractor.media_archives (expires_at);
 
 create table extractor.candidates (
     candidate_id      uuid        primary key,
@@ -154,4 +171,5 @@ create index outbox_events_due_idx on extractor.outbox_events (next_attempt_at, 
 
 comment on schema extractor is 'State owned exclusively by ratatoskr-extractor.';
 comment on table extractor.artifacts is 'BlobRef fields only; raw artifact bytes never enter PostgreSQL.';
+comment on table extractor.media_archives is 'Retention-bounded media archive accounting; BlobRef facts live in artifacts.';
 comment on table extractor.candidates is 'Persistence shape for plan item 5; item 6 does not generate scores.';
