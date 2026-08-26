@@ -29,6 +29,10 @@ const ESCALATION_RENDERED: &[u8] = b"<html><body><div id=\"root\"><p>Hydrated fi
     clippy::large_futures,
     reason = "the hermetic scenario holds one full resource set per test future"
 )]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the end-to-end escalation scenario reads best as one linear script"
+)]
 async fn empty_shell_escalates_and_completes_from_rendered_dom()
 -> Result<(), Box<dyn std::error::Error>> {
     let server = extractor_test_support::ScriptedServer::start(vec![
