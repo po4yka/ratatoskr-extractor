@@ -33,6 +33,8 @@ pub struct WorkerSettings {
     pub durable_name: String,
     /// KV bucket marking completed render jobs.
     pub completions_bucket: String,
+    /// Terminal jobs this process handles before exiting for a supervisor restart.
+    pub max_jobs_per_process: u32,
 }
 
 impl Default for WorkerSettings {
@@ -42,6 +44,7 @@ impl Default for WorkerSettings {
             blobs_root: std::path::PathBuf::new(),
             durable_name: "ratatoskr_browser_worker".to_owned(),
             completions_bucket: DEFAULT_COMPLETIONS_BUCKET.to_owned(),
+            max_jobs_per_process: 500,
         }
     }
 }
@@ -182,6 +185,7 @@ where
         .map_err(infrastructure)?;
     let mut messages = consumer.messages().await.map_err(infrastructure)?;
     let context = &context;
+    let mut handled: u32 = 0;
     loop {
         let delivery = tokio::select! {
             biased;
@@ -193,7 +197,15 @@ where
         };
         match message {
             Ok(message) => {
-                handle_delivery(&message, context, &executor, &store, &completions).await;
+                if handle_delivery(&message, context, &executor, &store, &completions).await
+                    == DeliveryOutcome::Terminal
+                {
+                    handled += 1;
+                    if handled >= settings.max_jobs_per_process {
+                        tracing::info!(handled, "job budget reached; recycling the process");
+                        return Ok(());
+                    }
+                }
             }
             Err(error) => {
                 tracing::warn!(error = %error, "render delivery failed");
@@ -203,6 +215,16 @@ where
     Ok(())
 }
 
+/// Whether one delivery reached a terminal outcome that counts against the
+/// process job budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeliveryOutcome {
+    /// The executor ran; the job completed or failed terminally.
+    Terminal,
+    /// The delivery was malformed or already deduplicated; no render happened.
+    Skipped,
+}
+
 /// Processes one delivery: render, publish evidence, mark, and acknowledge.
 async fn handle_delivery<E>(
     message: &jetstream::Message,
@@ -210,7 +232,8 @@ async fn handle_delivery<E>(
     executor: &E,
     store: &BlobStore,
     completions: &jetstream::kv::Store,
-) where
+) -> DeliveryOutcome
+where
     E: RenderExecutor,
 {
     let command: RenderCommand = match serde_json::from_slice(&message.payload) {
@@ -218,7 +241,7 @@ async fn handle_delivery<E>(
         Err(error) => {
             tracing::warn!(error = %error, "render command is malformed");
             message.ack().await.ok();
-            return;
+            return DeliveryOutcome::Skipped;
         }
     };
     if matches!(
@@ -226,7 +249,7 @@ async fn handle_delivery<E>(
         Ok(Some(_))
     ) {
         message.ack().await.ok();
-        return;
+        return DeliveryOutcome::Skipped;
     }
     match executor.render(&command).await {
         Ok(outcome) => {
@@ -242,7 +265,7 @@ async fn handle_delivery<E>(
                 Ok(blob) => blob,
                 Err(error) => {
                     tracing::warn!(error = %error, "rendered DOM persistence failed");
-                    return;
+                    return DeliveryOutcome::Skipped;
                 }
             };
             let completed = RenderCompleted {
@@ -255,7 +278,7 @@ async fn handle_delivery<E>(
                 .await
                 .is_err()
             {
-                return;
+                return DeliveryOutcome::Skipped;
             }
         }
         Err(WorkerError::Failed(class)) => {
@@ -267,11 +290,12 @@ async fn handle_delivery<E>(
                 .await
                 .is_err()
             {
-                return;
+                return DeliveryOutcome::Skipped;
             }
         }
         Err(error) => {
             tracing::warn!(error = %error, "worker infrastructure failed; leaving unacked");
+            return DeliveryOutcome::Skipped;
         }
     }
     completions
@@ -279,6 +303,7 @@ async fn handle_delivery<E>(
         .await
         .ok();
     message.ack().await.ok();
+    DeliveryOutcome::Terminal
 }
 
 async fn publish_event<T: serde::Serialize>(
