@@ -105,7 +105,7 @@ async fn publisher_retries_without_marking_an_unacknowledged_message()
     .await?;
     assert!(settled);
     assert_eq!(
-        run_outbox_once(database.database.pool(), &publisher, "test", 10)
+        run_outbox_once(database.database.pool(), publisher.0, "test", 10)
             .await?
             .claimed,
         0

@@ -98,6 +98,8 @@ async fn commands_are_consumed_once_and_deduped() -> Result<(), Box<dyn std::err
         })
         .await?;
     command_stream.purge().await?;
+    let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;
+    events_publisher.ensure_event_stream().await?;
     ensure_render_stream(&context, &settings.completions_bucket).await?;
 
     let executor = Arc::new(RecordingExecutor::default());
@@ -223,6 +225,8 @@ async fn consumer_exits_after_the_configured_job_count() -> Result<(), Box<dyn s
         max_jobs_per_process: 2,
     };
     provision_fresh_stream(&context).await?;
+    let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;
+    events_publisher.ensure_event_stream().await?;
     ensure_render_stream(&context, &settings.completions_bucket).await?;
 
     let executor = Arc::new(RecordingExecutor::default());
@@ -285,6 +289,8 @@ async fn failed_jobs_count_toward_recycling() -> Result<(), Box<dyn std::error::
         max_jobs_per_process: 2,
     };
     provision_fresh_stream(&context).await?;
+    let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;
+    events_publisher.ensure_event_stream().await?;
     ensure_render_stream(&context, &settings.completions_bucket).await?;
 
     let executor = Arc::new(FailingExecutor::default());

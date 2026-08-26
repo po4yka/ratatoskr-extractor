@@ -107,9 +107,12 @@ pub trait RenderExecutor: Send + Sync {
 mod executor;
 pub use executor::{ChromiumExecutor, ExecutorError, NavigationPolicy};
 
-/// Loads the shared command stream and creates the completions bucket.
+/// Loads the shared command and event streams and creates the completions bucket.
 ///
-/// The command stream itself belongs to the fleet's capture pipeline and must already exist.
+/// Both streams belong to the fleet's capture pipeline and must already exist:
+/// the extractor creates `ratatoskr_events` with the full `evt.>` subject set,
+/// and a render-scoped stream created here would silently narrow it for every
+/// later publisher.
 ///
 /// # Errors
 ///
@@ -122,16 +125,11 @@ pub async fn ensure_render_stream(
         .get_stream(COMMAND_STREAM)
         .await
         .map_err(infrastructure)?;
-    // The fleet event stream exists in production; a fresh deployment (and CI) creates it here.
-    let _ = context
-        .get_or_create_stream(jetstream::stream::Config {
-            name: EVENTS_STREAM.to_owned(),
-            subjects: vec!["evt.content.render.>".to_owned()],
-            max_age: std::time::Duration::from_hours(24),
-            ..jetstream::stream::Config::default()
-        })
-        .await
-        .map_err(infrastructure)?;
+    let _ = context.get_stream(EVENTS_STREAM).await.map_err(|error| {
+        infrastructure(std::io::Error::other(format!(
+            "the shared event stream must already exist (the extractor owns its creation): {error}"
+        )))
+    })?;
     let _ = context
         .create_key_value(jetstream::kv::Config {
             bucket: completions_bucket.to_owned(),

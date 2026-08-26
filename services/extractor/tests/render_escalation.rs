@@ -78,6 +78,8 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
         max_jobs_per_process: u32::MAX,
     };
+    let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;
+    events_publisher.ensure_event_stream().await?;
     let worker_task = tokio::spawn(browser_worker::run_render_consumer(
         jetstream::new(nats_client.clone()),
         worker_settings,

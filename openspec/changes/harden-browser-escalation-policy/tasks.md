@@ -27,7 +27,14 @@
 
 ## 6. Documentation and delivery
 
-- [ ] 6.1 Correct the stale current-phase text in `AGENTS.md` (provider adapters, PDF, and the isolated browser worker are implemented), document `BROWSER_MAX_JOBS_PER_PROCESS` and the new `RENDER__ALLOWED_HOSTS` / `RENDER__MAX_ESCALATIONS_PER_DAY` knobs beside their siblings in `DEVELOPMENT.md`, deployment environment examples, and align the README escalation paragraph. No test: documentation verified against the built binaries.
+- [x] 6.1 Correct the stale current-phase text in `AGENTS.md` (provider adapters, PDF, and the isolated browser worker are implemented), document `BROWSER_MAX_JOBS_PER_PROCESS` and the new `RENDER__ALLOWED_HOSTS` / `RENDER__MAX_ESCALATIONS_PER_DAY` knobs beside their siblings in `DEVELOPMENT.md`, deployment environment examples, and align the README escalation paragraph. No test: documentation verified against the built binaries.
 - [ ] 6.2 Run the exact DEVELOPMENT.md gate order including real PostgreSQL/JetStream/Chrome suites and the file-size ratchet, `openspec validate --archived --strict`, archive this change, integrate into `main`, push, and verify remote checks.
 
 Deviation note for 4.1: the host-allowlist denial went green on its first integration run because that gate's logic had already landed in the reviewed policy commit; the exhausted-budget denial shows the genuine red-to-green sequence (`navigation_timeout != quality` before wiring, quality rejection with a recorded gate afterwards).
+
+## 7. Events-stream ownership (discovered during apply)
+
+The worker's setup created the shared `ratatoskr_events` stream with render-only subjects whenever it ran before the extractor on a fresh broker, silently narrowing the subject set for every later publisher; the outbox suite failed with unacknowledged publishes once test ordering flipped. Red evidence: the pristine `main` checkout fails `eventing/tests/outbox.rs` against a stack where a browser-worker test ran first.
+
+- [x] 7.1 Reproduce the narrowing: run the outbox publisher suite on a broker where a browser-worker scenario created the events stream first and confirm every publish fails with "the message was not acknowledged by the bus" while `jsz` shows subjects `['evt.content.render.>']`.
+- [x] 7.2 Make the extractor the only creator of the shared event stream: `ensure_render_stream` now requires both fleet streams to exist and documents why, service integration suites create the event stream through the owner's publisher before spawning a worker, and the transport suite does the same through an eventing dev-dependency; rerun the outbox suite and the worker suites in both orders and confirm green.

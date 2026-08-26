@@ -82,3 +82,12 @@ reversion (`enabled = false`); no persisted extraction state changes meaning.
 ## Open Questions
 
 None blocking.
+
+### Events-stream ownership (added during apply)
+
+Applying this change exposed a latent ordering bug outside the original scope: the worker's setup
+created the shared event stream with render-only subjects, so any fresh broker that saw a worker
+before an extractor narrowed the stream for every later publisher. The fix keeps creation with the
+extractor's publisher (`evt.>` bounded config) and turns the worker's setup into an existence check
+with an explanatory error. Recorded here because it changes deployment expectations: a standalone
+worker can no longer bootstrap an empty broker alone.
