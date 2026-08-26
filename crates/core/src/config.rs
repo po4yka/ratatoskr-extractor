@@ -108,6 +108,10 @@ pub struct RenderConfig {
     pub total_timeout_ms: u64,
     /// Maximum rendered DOM bytes accepted back from the worker.
     pub max_dom_bytes: usize,
+    /// Exact host names permitted to escalate; an empty list imposes no host restriction.
+    pub allowed_hosts: Vec<String>,
+    /// Finite number of render commands the extractor may publish per UTC day.
+    pub max_escalations_per_day: u32,
     /// Root of the browser worker's owned blobs on the shared deployment device.
     pub worker_blobs_root: std::path::PathBuf,
 }
@@ -321,6 +325,8 @@ impl ExtractorConfig {
                 navigation_timeout_ms: 15_000,
                 total_timeout_ms: 45_000,
                 max_dom_bytes: 8 * 1_024 * 1_024,
+                allowed_hosts: Vec::new(),
+                max_escalations_per_day: 500,
                 worker_blobs_root: "/var/lib/ratatoskr-browser-worker/blobs".to_owned().into(),
             },
             shutdown: ShutdownConfig { grace_seconds: 25 },
@@ -420,6 +426,7 @@ fn validate(config: &ExtractorConfig) -> Vec<ConfigViolation> {
     validate_database(&config.database, &mut violations);
     validate_bus(&config.bus, config.fetch.total_timeout_ms, &mut violations);
     validate_fetch(&config.fetch, &mut violations);
+    validate_render(&config.render, &mut violations);
     validate_youtube(&config.youtube, &mut violations);
     for (valid, key) in [
         (config.parser.max_input_bytes > 0, "parser.max_input_bytes"),
@@ -568,6 +575,25 @@ fn validate_fetch(config: &FetchConfig, violations: &mut Vec<ConfigViolation>) {
         config.max_decoded_bytes >= config.max_wire_bytes,
         "fetch.max_decoded_bytes",
         "must not be smaller than the wire-byte limit",
+        violations,
+    );
+}
+
+fn validate_render(config: &RenderConfig, violations: &mut Vec<ConfigViolation>) {
+    for (valid, key) in [
+        (
+            config.navigation_timeout_ms > 0,
+            "render.navigation_timeout_ms",
+        ),
+        (config.total_timeout_ms > 0, "render.total_timeout_ms"),
+        (config.max_dom_bytes > 0, "render.max_dom_bytes"),
+    ] {
+        require(valid, key, "must be greater than zero", violations);
+    }
+    require(
+        !config.enabled || config.max_escalations_per_day > 0,
+        "render.max_escalations_per_day",
+        "must be greater than zero when rendering is enabled",
         violations,
     );
 }
