@@ -16,6 +16,7 @@ members = [
     "crates/youtube",
     "services/browser-worker",
     "services/extractor",
+    "tools/corpus",
 ]
 
 [workspace.package]

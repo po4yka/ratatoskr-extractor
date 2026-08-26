@@ -1,0 +1,47 @@
+{
+  "document_id": "018f0000-0000-7000-8000-000000000102",
+  "source_address": "https://corpus.example/direct.pdf",
+  "content_digest": {
+    "algorithm": "sha256",
+    "hex": "d3ae61d68b80d8734fa914068e16dfca76089e183ba08df8c1525ab837d68d37"
+  },
+  "title": "Direct Extraction Fixture",
+  "blocks": [
+    {
+      "kind": "paragraph",
+      "text": "Ratatoskr direct extraction fixture. The first page carries deterministic prose for the parser. Un texte de contrôle avec accents français stables."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Second page follows the first in the page tree. Reading order must keep this page after page one."
+    }
+  ],
+  "provenance": [
+    {
+      "block_index": 0,
+      "extraction_strategy": "direct_pdf",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/pdf",
+        "length_bytes": 1388
+      }
+    },
+    {
+      "block_index": 1,
+      "extraction_strategy": "direct_pdf",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/pdf",
+        "length_bytes": 1388
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+[package]
+name = "ratatoskr-extractor-corpus"
+description = "Offline golden corpus and performance evidence for Ratatoskr Extractor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "extractor_corpus"
+path = "src/lib.rs"
+
+[dependencies]
+ratatoskr-document-contracts.workspace = true
+ratatoskr-extractor-document-ir.workspace = true
+ratatoskr-extractor-pdf.workspace = true
+ratatoskr-extractor-providers.workspace = true
+ratatoskr-extractor-youtube.workspace = true
+ratatoskr-identifiers.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

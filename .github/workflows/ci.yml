@@ -64,6 +64,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo build --workspace --locked
       - run: cargo test --workspace --locked
+      - run: cargo test -p ratatoskr-extractor-corpus --locked
+      - run: tools/run-corpus-performance.sh --check
       - run: cargo test --workspace --locked --doc
       - run: cargo build --workspace --locked --release
       - run: git ls-files -z "*.rs" | xargs -0 -r wc -l | awk '$2 != "total" && $1 > 850 { print; bad = 1 } END { exit bad }'
@@ -76,3 +78,19 @@ jobs:
           ' .github/workflows/ci.yml)
           in_doc=$(awk '/^### Rust - the CI gate/{f=1} f&&/^cargo /{print} f&&/^```$/{exit}' DEVELOPMENT.md)
           test "$in_ci" = "$in_doc"
+
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FUZZ_TOOLCHAIN: nightly-2026-06-11
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned fuzz toolchain
+        run: rustup toolchain install nightly-2026-06-11 --profile minimal
+      - name: Install pinned cargo-fuzz
+        run: cargo +nightly-2026-06-11 install cargo-fuzz --version 0.13.1 --locked
+      - name: Run bounded corpus-seeded fuzz smoke
+        run: tools/run-fuzz-smoke.sh

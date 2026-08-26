@@ -1,0 +1,3 @@
+https://news.ycombinator.com/item?id=424242
+https://www.reddit.com/r/rust/comments/abc123/example/
+https://www.youtube.com/watch?v=dQw4w9WgXcQ

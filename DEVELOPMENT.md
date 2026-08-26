@@ -8,8 +8,8 @@ parse-once HTML candidates, deterministic quality selection, Document IR, Postgr
 inbox/outbox integration, direct PDF extraction, the Hacker News and Reddit provider adapters with
 link-post resolution, and the isolated browser worker whose escalation runs through one gated
 policy (`render.enabled`, `render.allowed_hosts`, `render.max_escalations_per_day`).
-PDFs without a text layer degrade explicitly; OCR stays out of scope. YouTube transcripts and
-delegated platform routes (GitHub, X, Instagram, Threads, Telegram) remain unimplemented here.
+PDFs without a text layer degrade explicitly; OCR stays out of scope. Delegated platform routes
+(GitHub, X, Instagram, Threads, Telegram) remain unimplemented here.
 
 ## Toolchain and gate
 
@@ -24,8 +24,34 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --workspace --locked
 cargo test --workspace --locked
+cargo test -p ratatoskr-extractor-corpus --locked
 cargo test --workspace --locked --doc
 cargo build --workspace --locked --release
+```
+
+The corpus report is an additional gate command because it collects maximum resident memory through
+the native platform `time` utility:
+
+```bash
+tools/run-corpus-performance.sh --check
+```
+
+### Golden corpus and fuzzing
+
+`tools/corpus` owns five offline repository-owned fixtures that exercise HTML, direct PDF, Hacker
+News, Reddit, and YouTube transcript conversion. Read-only verification runs with the corpus test.
+An expected Document IR changes only through one explicitly named case, then its diff must be
+reviewed:
+
+```bash
+cargo run --locked -p ratatoskr-extractor-corpus --bin corpus-bless -- html-semantic
+```
+
+The CI `fuzz` job uses `nightly-2026-06-11` and `cargo-fuzz 0.13.1` to run the committed seed corpus
+for HTML, PDF, and URL classification targets for 15 seconds each. For a local smoke run:
+
+```bash
+tools/run-fuzz-smoke.sh
 ```
 
 ### Test environment
@@ -62,7 +88,8 @@ rejects a tracked Rust source file above 850 lines.
 2. Change one stage without bypassing shared fetch, parse, quality, or provenance logic.
 3. Add or update a licensed/synthetic golden fixture.
 4. Test SSRF, redirects, limits, malformed input, determinism, and cancellation.
-5. Compare quality, latency, requests, bytes, CPU, memory, and browser escalation against baseline.
+5. Run the offline corpus report; its p95/throughput thresholds and 768 MiB RSS ceiling are in
+   `tools/corpus/performance/baseline.json`.
 
 LLM credentials are not needed because LLM interpretation is outside this repository.
 

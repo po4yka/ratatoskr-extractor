@@ -1,0 +1,65 @@
+{
+  "document_id": "018f0000-0000-7000-8000-000000000103",
+  "source_address": "https://hn.algolia.com/api/v1/items/424242",
+  "content_digest": {
+    "algorithm": "sha256",
+    "hex": "5809739f50b6b2ccba995d5ab061cbc94cf41f34dc199fb9cc06f3d2af473f23"
+  },
+  "title": "Fixture story about deterministic provider extraction",
+  "blocks": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Fixture story about deterministic provider extraction"
+    },
+    {
+      "kind": "paragraph",
+      "text": "First comment with \"quotes\" and italics survives conversion."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Nested reply keeps pre-order position."
+    }
+  ],
+  "provenance": [
+    {
+      "block_index": 0,
+      "extraction_strategy": "hacker_news_item",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 1532
+      }
+    },
+    {
+      "block_index": 1,
+      "extraction_strategy": "hacker_news_item",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 1532
+      }
+    },
+    {
+      "block_index": 2,
+      "extraction_strategy": "hacker_news_item",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 1532
+      }
+    }
+  ]
+}

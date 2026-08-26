@@ -1,0 +1,13 @@
+{
+  "report": {
+    "case_count": 5,
+    "iterations": 100,
+    "throughput_documents_per_second": 945.7893268120882,
+    "p50_microseconds": 201,
+    "p95_microseconds": 4544,
+    "max_rss_kib": 17536
+  },
+  "min_throughput_documents_per_second": 100.0,
+  "max_p95_microseconds": 20000,
+  "max_rss_kib": 786432
+}

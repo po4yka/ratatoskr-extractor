@@ -1,0 +1,82 @@
+{
+  "document_id": "018f0000-0000-7000-8000-000000000104",
+  "source_address": "https://www.reddit.com/r/corpus/comments/abc123/post/.json",
+  "content_digest": {
+    "algorithm": "sha256",
+    "hex": "98e8be4d912e94e727ba7952cfcb6915b94ac7624fd283b5b7d358289c1a6177"
+  },
+  "title": "Deterministic extraction fixture post",
+  "blocks": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Deterministic extraction fixture post"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Body text of the synthetic fixture post survives conversion."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Top-level comment body."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Nested reply body."
+    }
+  ],
+  "provenance": [
+    {
+      "block_index": 0,
+      "extraction_strategy": "reddit_post",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 989
+      }
+    },
+    {
+      "block_index": 1,
+      "extraction_strategy": "reddit_post",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 989
+      }
+    },
+    {
+      "block_index": 2,
+      "extraction_strategy": "reddit_post",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 989
+      }
+    },
+    {
+      "block_index": 3,
+      "extraction_strategy": "reddit_post",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "application/json",
+        "length_bytes": 989
+      }
+    }
+  ]
+}

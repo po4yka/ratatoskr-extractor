@@ -176,7 +176,11 @@ text_characters = 132
 reasons = ["accepted"]
 ```
 
-Thresholds are calibrated against a golden corpus, not treated as permanent magic constants.
+Thresholds are calibrated against the committed offline golden corpus, not treated as permanent
+magic constants. `tools/corpus` verifies canonical Document IR for HTML, direct PDF, Hacker News,
+Reddit, and YouTube transcript cases; expected output changes require the explicit exact-case
+`corpus-bless` command. Its performance baseline records throughput, p50/p95 latency, and native
+maximum RSS, with a 768 MiB ceiling aligned to the extractor service `MemoryHigh` budget.
 
 ## Browser escalation
 
@@ -265,7 +269,10 @@ comparison with the legacy pipeline during shadow mode.
 ## Golden corpus and migration
 
 Item 5 includes four minimized synthetic calibration fixtures: semantic, noisy, malformed, and
-login HTML. Plan item 9 will expand this to a representative corpus covering:
+login HTML. Plan item 9 adds a committed offline corpus with canonical expected Document IR for
+HTML, direct PDF, Hacker News, Reddit, and YouTube transcript conversion. It also carries seeded
+HTML/PDF/URL cargo-fuzz targets and a bounded performance report. The remaining corpus expansion
+will cover:
 
 - static and malformed HTML;
 - JavaScript applications;
@@ -302,9 +309,9 @@ The legacy and Rust pipelines will run in shadow mode. Evaluation compares compl
 ## Implementation plan
 
 The authoritative implemented-versus-planned sequence is
-[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). Items 1 through 6 and direct PDF
-extraction are implemented. Provider/source adapters, the isolated browser worker, the expanded
-golden corpus, fuzzing, performance reports, and legacy shadow comparison remain planned.
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). The extraction surface, supported
+provider/source adapters, browser worker, offline golden corpus, bounded fuzzing, and performance
+reporting are implemented. Legacy shadow comparison remains planned.
 
 ## Workspace integration
 
@@ -319,5 +326,6 @@ The ordinary HTML service path, parser, deterministic evaluator, small calibrati
 PDF extraction with typed encrypted/pathological failure modes, the Hacker News/Reddit provider
 adapters with link-post resolution and typed fall-through on provider response-content failures,
 and the isolated browser worker (fresh isolated context per job, denied heavy
-subresources, SSRF revalidation of every hop, finite budgets) are implemented. OCR for scanned
-PDFs and broad corpus/performance reporting remain planned.
+subresources, SSRF revalidation of every hop, finite budgets), plus offline corpus, fuzz, and
+performance evidence, are implemented. OCR for scanned PDFs and legacy shadow comparison remain
+planned.

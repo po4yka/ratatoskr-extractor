@@ -1,0 +1,39 @@
+[package]
+name = "ratatoskr-extractor-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-extractor-document-ir = { path = "../crates/document-ir" }
+ratatoskr-extractor-pdf = { path = "../crates/pdf" }
+ratatoskr-extractor-url-routing = { path = "../crates/url-routing" }
+
+[[bin]]
+name = "html_parser"
+path = "fuzz_targets/html_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pdf_extraction"
+path = "fuzz_targets/pdf_extraction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "url_classification"
+path = "fuzz_targets/url_classification.rs"
+test = false
+doc = false
+bench = false

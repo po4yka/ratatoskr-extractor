@@ -1,0 +1,65 @@
+{
+  "document_id": "018f0000-0000-7000-8000-000000000101",
+  "source_address": "https://corpus.example/html-semantic",
+  "content_digest": {
+    "algorithm": "sha256",
+    "hex": "e13f964d1bee7c3bbe676551a47d010fed0632b8a4cb7657cec516e870083320"
+  },
+  "title": "Forest Networks",
+  "blocks": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Forest Networks"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Trees exchange nutrients through fungal networks beneath the soil while researchers observe seasonal changes."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Repeated measurements connect water availability, habitat conditions, and the health of established woodland communities."
+    }
+  ],
+  "provenance": [
+    {
+      "block_index": 0,
+      "extraction_strategy": "semantic",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "text/html",
+        "length_bytes": 372
+      }
+    },
+    {
+      "block_index": 1,
+      "extraction_strategy": "semantic",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "text/html",
+        "length_bytes": 372
+      }
+    },
+    {
+      "block_index": 2,
+      "extraction_strategy": "semantic",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "abababababababababababababababababababababababababababababababab"
+        },
+        "media_type": "text/html",
+        "length_bytes": 372
+      }
+    }
+  ]
+}
