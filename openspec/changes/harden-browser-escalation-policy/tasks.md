@@ -12,8 +12,8 @@
 
 ## 3. Durable per-day render budget
 
-- [ ] 3.1 Add failing database test (real PostgreSQL via the existing test harness): apply the current schema definition, call the new budget-slot consumer with a cap of one twice, and assert the first call reports consumed with count one while the second reports denied without advancing the counter; also assert the row appears keyed by the UTC day. Run it and confirm the table and function are absent today.
-- [ ] 3.2 Edit `schema.sql` in place adding the `render_budgets(utc_day, escalated)` accounting table and implement one atomic SQL statement (conditional upsert-and-increment returning the new count) behind a typed eventing API used before publishing any render command; make 3.1 pass, run workspace gates, and commit this pair.
+- [x] 3.1 Add failing database test (real PostgreSQL via the existing test harness): apply the current schema definition, call the new budget-slot consumer with a cap of one twice, and assert the first call reports consumed with count one while the second reports denied without advancing the counter; also assert the row appears keyed by the UTC day. Run it and confirm the table and function are absent today.
+- [x] 3.2 Edit `schema.sql` in place adding the `render_budgets(utc_day, escalated)` accounting table and implement one atomic SQL statement (conditional upsert-and-increment returning the new count) behind a typed eventing API used before publishing any render command; make 3.1 pass, run workspace gates, and commit this pair.
 
 ## 4. Extractor honours the gates end to end
 
@@ -22,8 +22,8 @@
 
 ## 5. Worker process recycling
 
-- [ ] 5.1 Add failing transport test `services/browser-worker/tests/transport.rs::consumer_exits_after_the_configured_job_count`: a stub executor records invocations, two commands are published, the consumer runs with a finite per-process job limit of two, and the assertion requires the consumer future to return successfully after both terminal outcomes while both events published and both deliveries acknowledged; a third redelivered duplicate before the limit consumes no capacity. Run it and confirm the setting and the counting loop are absent today.
-- [ ] 5.2 Add `max_jobs_per_process` to `WorkerSettings` (flat `BROWSER_MAX_JOBS_PER_PROCESS` environment name, finite default) and stop the consumer cleanly once that many jobs reach a terminal outcome, deduplicated deliveries excluded; make 5.1 pass, run worker gates, and commit this pair.
+- [x] 5.1 Add failing transport test `services/browser-worker/tests/transport.rs::consumer_exits_after_the_configured_job_count`: a stub executor records invocations, two commands are published, the consumer runs with a finite per-process job limit of two, and the assertion requires the consumer future to return successfully after both terminal outcomes while both events published and both deliveries acknowledged; a third redelivered duplicate before the limit consumes no capacity. Run it and confirm the setting and the counting loop are absent today.
+- [x] 5.2 Add `max_jobs_per_process` to `WorkerSettings` (flat `BROWSER_MAX_JOBS_PER_PROCESS` environment name, finite default) and stop the consumer cleanly once that many jobs reach a terminal outcome, deduplicated deliveries excluded; make 5.1 pass, run worker gates, and commit this pair.
 
 ## 6. Documentation and delivery
 
