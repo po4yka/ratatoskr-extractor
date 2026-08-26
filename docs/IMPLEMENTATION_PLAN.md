@@ -11,7 +11,7 @@
 - [x] Resolve provider link posts through one ordinary retrieval pass and fall back once on typed provider response-content failures.
 - [x] Add isolated browser worker and strict escalation policy.
 - [x] Build golden corpus, fuzzing, and performance reports.
-- [ ] Run legacy shadow comparison and cut over source classes independently.
+- [x] Run legacy shadow comparison and cut over source classes independently.
 
 Items 1 through 3 deliberately contain no Document IR, database, command bus, inbox, or outbox.
 Item 4 starts Document IR, item 5 selects deterministic HTML candidates, and item 6 adds persistence

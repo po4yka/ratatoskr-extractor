@@ -1,0 +1,50 @@
+{
+  "legacy_archive": {
+    "repository": "ratatoskr",
+    "revision": "5cdc911b9d33a426613eed79b1ef36db041693e3",
+    "read_only": true
+  },
+  "criteria": {
+    "web_article": { "minimum_overlap": 0.90 },
+    "youtube_transcript": { "minimum_overlap": 0.95 },
+    "x_post": { "minimum_overlap": 1.00 }
+  },
+  "cases": [
+    {
+      "name": "web-semantic-article",
+      "source_class": "web_article",
+      "source_address": "https://corpus.example/html-semantic",
+      "current_case": "html-semantic",
+      "legacy": {
+        "capture_path": "app.core.html_utils.html_to_text",
+        "success": true,
+        "text": "Forest Networks\nTrees exchange nutrients through fungal networks beneath the soil while researchers observe seasonal changes.\nRepeated measurements connect water availability, habitat conditions, and the health of established woodland communities.\nTrees exchange nutrients through fungal networks beneath the soil while researchers observe seasonal changes.\nRepeated measurements connect water availability, habitat conditions, and the health of established woodland communities.",
+        "block_kinds": { "heading": 1, "paragraph": 4 }
+      }
+    },
+    {
+      "name": "youtube-transcript",
+      "source_class": "youtube_transcript",
+      "source_address": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "current_case": "youtube-transcript",
+      "legacy": {
+        "capture_path": "app.adapters.youtube.youtube_downloader_parts.transcript_api.format_transcript",
+        "success": true,
+        "text": "The committed transcript starts with a complete sentence. Its second cue preserves ordered provenance without live retrieval. The final cue makes the source document useful for deterministic testing.",
+        "block_kinds": { "paragraph": 1 }
+      }
+    },
+    {
+      "name": "x-post",
+      "source_class": "x_post",
+      "source_address": "https://x.com/corpus_author/status/1",
+      "current_case": null,
+      "legacy": {
+        "capture_path": "app.adapters.twitter.text_formatter.format_tweets_for_summary",
+        "success": true,
+        "text": "@corpus_author (Corpus Author):\nA committed X post preserves a public extraction baseline for later source-class comparison.\n[Image: Synthetic chart showing stable coverage]",
+        "block_kinds": { "paragraph": 3 }
+      }
+    }
+  ]
+}

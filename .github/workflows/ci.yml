@@ -65,6 +65,7 @@ jobs:
       - run: cargo build --workspace --locked
       - run: cargo test --workspace --locked
       - run: cargo test -p ratatoskr-extractor-corpus --locked
+      - run: cargo run --locked -p ratatoskr-extractor-corpus --bin shadow-report -- --check
       - run: tools/run-corpus-performance.sh --check
       - run: cargo test --workspace --locked --doc
       - run: cargo build --workspace --locked --release

@@ -17,6 +17,7 @@ use ratatoskr_identifiers::{
 use serde::Deserialize;
 
 pub mod performance;
+pub mod shadow;
 
 const HTML_SEMANTIC: &[u8] =
     include_bytes!("../../../crates/document-ir/tests/fixtures/semantic.html");

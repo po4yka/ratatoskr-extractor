@@ -3,11 +3,12 @@
 > Status: Active
 > Last reviewed: 2026-08-21
 
-The Rust workspace implements plan items 1 through 11: foundation, URL/SSRF policy, bounded fetch,
+The Rust workspace implements every item in `docs/IMPLEMENTATION_PLAN.md`: foundation, URL/SSRF policy, bounded fetch,
 parse-once HTML candidates, deterministic quality selection, Document IR, PostgreSQL/JetStream
 inbox/outbox integration, direct PDF extraction, the Hacker News and Reddit provider adapters with
-link-post resolution, and the isolated browser worker whose escalation runs through one gated
-policy (`render.enabled`, `render.allowed_hosts`, `render.max_escalations_per_day`).
+link-post resolution, the isolated browser worker whose escalation runs through one gated policy
+(`render.enabled`, `render.allowed_hosts`, `render.max_escalations_per_day`), the offline golden
+corpus/fuzzing/performance evidence, and independent legacy-shadow cutover recommendations.
 PDFs without a text layer degrade explicitly; OCR stays out of scope. Delegated platform routes
 (GitHub, X, Instagram, Threads, Telegram) remain unimplemented here.
 
@@ -25,6 +26,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --workspace --locked
 cargo test --workspace --locked
 cargo test -p ratatoskr-extractor-corpus --locked
+cargo run --locked -p ratatoskr-extractor-corpus --bin shadow-report -- --check
 cargo test --workspace --locked --doc
 cargo build --workspace --locked --release
 ```
@@ -46,6 +48,13 @@ reviewed:
 ```bash
 cargo run --locked -p ratatoskr-extractor-corpus --bin corpus-bless -- html-semantic
 ```
+
+Its `shadow-report --check` command compares the same committed web-article and YouTube inputs with
+provenance-pinned observations captured from the read-only legacy archive, while recording X posts
+as explicitly unsupported until an Extractor route exists. The committed report names independent
+per-class success rates, directional normalized-token coverage, IR block statistics, criteria, and
+an `approve`, `hold`, or `insufficient-evidence` recommendation. It is measurement only: owner
+approval and a separate change are required before any traffic switch.
 
 The CI `fuzz` job uses `nightly-2026-06-11` and `cargo-fuzz 0.13.1` to run the committed seed corpus
 for HTML, PDF, and URL classification targets for 15 seconds each. For a local smoke run:

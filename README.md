@@ -2,7 +2,7 @@
 
 `ratatoskr-extractor` turns external URLs and files into deterministic, provenance-preserving documents for Ratatoskr. Its core design is **fetch once, parse once, score deterministically, and escalate to a browser only when necessary**.
 
-> **Status:** implementation plan items 1 through 8 are complete: foundation, URL/SSRF policy,
+> **Status:** the implementation plan is complete: foundation, URL/SSRF policy,
 > bounded retrieval with per-host pacing, parse-once HTML candidates, deterministic quality
 > selection, Document IR, the durable PostgreSQL/JetStream pipeline, direct PDF extraction,
 > Hacker News/Reddit adapters that fetch each source's native JSON once and resolve link posts
@@ -12,9 +12,9 @@
 > identity, retrieves a caption track under an explicit language preference (manual preferred
 > within a language), builds Document IR from transcript segments with extractor-owned timing
 > diagnostics, and archives media only behind a gated, byte-capped, retention-bounded
-> configuration.
-> OCR and delegated platform routes remain planned; scanned PDFs without a text layer are
-> recorded as an explicit degraded outcome.
+> configuration, and an offline legacy-shadow comparison report with independent source-class
+> recommendations. OCR and delegated platform routes remain planned; scanned PDFs without a text
+> layer are recorded as an explicit degraded outcome.
 
 > [!IMPORTANT]
 > **Ratatoskr is in development.** No database holds data that has to survive a schema change.
@@ -182,6 +182,13 @@ Reddit, and YouTube transcript cases; expected output changes require the explic
 `corpus-bless` command. Its performance baseline records throughput, p50/p95 latency, and native
 maximum RSS, with a 768 MiB ceiling aligned to the extractor service `MemoryHigh` budget.
 
+`shadow-report --check` separately compares web articles, YouTube transcripts, and X posts against
+committed observations captured from the read-only legacy archive. It reports legacy/current success
+rates, directional normalized-token content coverage, and block-kind statistics. A class receives
+`approve` only when current success is non-inferior and every jointly successful sample meets its
+coverage floor; an unsupported or regressed class is `hold`. This report does not switch traffic:
+owner approval and a separate cutover change are mandatory.
+
 ## Browser escalation
 
 The browser worker is invoked only when static retrieval cannot produce acceptable content, such as:
@@ -262,9 +269,9 @@ ratatoskr_extractor_runs_total{outcome}
 ratatoskr_extractor_parse_duration_seconds
 ```
 
-Candidate-score, selected-strategy, browser, cache-rate, and broad corpus comparison metrics remain
-planned with the capabilities that would produce them. Attempt-level diagnostics must support
-comparison with the legacy pipeline during shadow mode.
+Candidate-score, selected-strategy, browser, and cache-rate telemetry remains scoped to the
+capabilities that produce it. The offline shadow report retains per-class comparison evidence without
+adding a second production extraction path.
 
 ## Golden corpus and migration
 
@@ -310,8 +317,8 @@ The legacy and Rust pipelines will run in shadow mode. Evaluation compares compl
 
 The authoritative implemented-versus-planned sequence is
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). The extraction surface, supported
-provider/source adapters, browser worker, offline golden corpus, bounded fuzzing, and performance
-reporting are implemented. Legacy shadow comparison remains planned.
+provider/source adapters, browser worker, offline golden corpus, bounded fuzzing, performance
+reporting, and offline legacy shadow comparison are implemented.
 
 ## Workspace integration
 
@@ -325,7 +332,6 @@ require the full system.
 The ordinary HTML service path, parser, deterministic evaluator, small calibration corpus, direct
 PDF extraction with typed encrypted/pathological failure modes, the Hacker News/Reddit provider
 adapters with link-post resolution and typed fall-through on provider response-content failures,
-and the isolated browser worker (fresh isolated context per job, denied heavy
-subresources, SSRF revalidation of every hop, finite budgets), plus offline corpus, fuzz, and
-performance evidence, are implemented. OCR for scanned PDFs and legacy shadow comparison remain
-planned.
+and the isolated browser worker (fresh isolated context per job, denied heavy subresources, SSRF
+revalidation of every hop, finite budgets), plus offline corpus, fuzz, performance, and legacy
+shadow-comparison evidence, are implemented. OCR for scanned PDFs remains planned.
