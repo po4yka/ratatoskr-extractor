@@ -247,7 +247,7 @@ async fn consumer_exits_after_the_configured_job_count() -> Result<(), Box<dyn s
     }
 
     // Both terminal outcomes publish before the process budget ends the loop.
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
         let mut seen = 0;
         while seen < 2 {
             let message = completions.next().await.expect("completion arrives");
@@ -311,7 +311,7 @@ async fn failed_jobs_count_toward_recycling() -> Result<(), Box<dyn std::error::
         uuid::uuid!("018f0000-0000-7000-8000-0000000000d1"),
         uuid::uuid!("018f0000-0000-7000-8000-0000000000d2"),
     ];
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
         let mut seen = 0;
         while seen < 2 {
             let message = failures.next().await.expect("failure arrives");

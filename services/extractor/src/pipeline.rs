@@ -194,21 +194,12 @@ async fn complete_html(
             });
             match decision {
                 EscalationDecision::Escalate => {
-                    match extractor_eventing::consume_render_budget(
-                        pool,
-                        render.max_escalations_per_day,
-                    )
-                    .await?
+                    match spend_budget_and_escalate(pool, store, parser, render, bus, run, &fetched)
+                        .await?
                     {
-                        extractor_eventing::RenderBudget::Consumed { .. } => {
-                            if let Some(extraction) =
-                                escalate_to_render(pool, render, bus, parser, run, &fetched).await?
-                            {
-                                complete_escalated(pool, store, run, &fetched, &extraction).await?;
-                                return Ok(());
-                            }
-                        }
-                        extractor_eventing::RenderBudget::Exhausted => {
+                        EscalationStep::Completed => return Ok(()),
+                        EscalationStep::WorkerTerminal => {}
+                        EscalationStep::BudgetExhausted => {
                             record_policy_denial(
                                 pool,
                                 run,
@@ -552,6 +543,42 @@ fn is_empty_shell(raw_html: &[u8]) -> bool {
     ["id=\"root\"", "id=\"app\"", "__NEXT_DATA__"]
         .iter()
         .any(|marker| haystack.contains(marker))
+}
+
+/// What one permitted escalation did after spending its daily slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EscalationStep {
+    /// The rendered DOM completed the run as a document.
+    Completed,
+    /// The worker returned a terminal failure class; nothing more to record.
+    WorkerTerminal,
+    /// The day budget was already spent; the caller records the denial.
+    BudgetExhausted,
+}
+
+/// Consumes one durable daily slot (the authoritative budget check) and, when
+/// admitted, renders once and completes the run from the rendered DOM.
+async fn spend_budget_and_escalate(
+    pool: &sqlx::PgPool,
+    store: &BlobStore,
+    parser: &ParserConfig,
+    render: &RenderConfig,
+    bus: &async_nats::jetstream::Context,
+    run: &extractor_eventing::QueuedRun,
+    fetched: &FetchResult,
+) -> Result<EscalationStep, ProcessError> {
+    match extractor_eventing::consume_render_budget(pool, render.max_escalations_per_day).await? {
+        extractor_eventing::RenderBudget::Consumed { .. } => {
+            if let Some(extraction) =
+                escalate_to_render(pool, render, bus, parser, run, fetched).await?
+            {
+                complete_escalated(pool, store, run, fetched, &extraction).await?;
+                return Ok(EscalationStep::Completed);
+            }
+            Ok(EscalationStep::WorkerTerminal)
+        }
+        extractor_eventing::RenderBudget::Exhausted => Ok(EscalationStep::BudgetExhausted),
+    }
 }
 
 /// Completes one run from an escalated rendered-DOM extraction: same IR storage,
