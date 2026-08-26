@@ -140,7 +140,7 @@ create table extractor.provider_resolutions (
     failure_class  text,
     resolved_url   text,
     created_at     timestamptz not null default now(),
-    constraint provider_resolution_kind_is_known check (kind in ('provider_attempt', 'resolved_target', 'html_fallback'))
+    constraint provider_resolution_kind_is_known check (kind in ('provider_attempt', 'resolved_target', 'html_fallback', 'render_policy'))
 );
 
 create table extractor.outbox_events (

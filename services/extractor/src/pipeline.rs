@@ -6,10 +6,11 @@ use extractor_document_ir::{
     DocumentIrError, HtmlDocumentInput, HtmlExtraction, ParseLimits, from_html,
 };
 use extractor_eventing::{
-    CompletedFetch, RenderOutcome, RenderRequestError, complete_document, fail_run, record_fetch,
-    reject_quality, store_document_ir,
+    CompletedFetch, RenderOutcome, RenderRequestError, ResolutionStep, complete_document, fail_run,
+    record_fetch, reject_quality, store_document_ir,
 };
 
+use crate::escalation::{self, EscalationDecision};
 use crate::provider_continuation::{
     fallback_to_generic_html, points_back_to_source, resolve_external_article,
 };
@@ -177,30 +178,34 @@ async fn complete_html(
     let extraction = match document {
         Ok(extraction) => extraction,
         Err(DocumentIrError::LowQuality { candidates }) => {
-            // Deterministic escalation: only an empty-shell shape with rendering enabled may
-            // escalate, and only once — this branch has no escalation of its own.
+            // Deterministic escalation through one policy evaluation: only a
+            // permitted decision publishes a render command, and this branch has
+            // no escalation of its own.
             let empty_shell = is_empty_shell(&raw_html)
                 && candidates.iter().all(|c| c.metrics.text_characters < 120);
-            if render.enabled
-                && empty_shell
-                && let Some(extraction) =
-                    escalate_to_render(pool, render, bus, parser, run, &fetched).await?
-            {
-                let ir_blob = store_document_ir(store, &extraction.document).await?;
-                let fetch = completed_fetch(&fetched);
-                complete_document(
-                    pool,
-                    run.run_id,
-                    &extraction.document,
-                    &ir_blob,
-                    &fetch,
-                    &extraction.candidates,
-                    &[],
-                )
-                .await?;
-                metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded")
-                    .increment(1);
-                return Ok(());
+            // The durable per-day counter feeds this gate once the render-budget
+            // storage lands; until then the gate is fed open.
+            let budget_remaining = true;
+            let decision = escalation::decide(&escalation::EscalationInputs {
+                quality_rejected: true,
+                empty_shell_evidence: empty_shell,
+                host: fetched.final_url.host_str(),
+                config: render,
+                budget_remaining,
+            });
+            match decision {
+                EscalationDecision::Escalate => {
+                    if let Some(extraction) =
+                        escalate_to_render(pool, render, bus, parser, run, &fetched).await?
+                    {
+                        complete_escalated(pool, store, run, &fetched, &extraction).await?;
+                        return Ok(());
+                    }
+                }
+                EscalationDecision::Denied(denial) => {
+                    record_policy_denial(pool, run, &fetched, &candidates, denial).await?;
+                    return Ok(());
+                }
             }
             let fetch = completed_fetch(&fetched);
             reject_quality(pool, run.run_id, &fetch, &candidates, "quality", &[]).await?;
@@ -528,6 +533,65 @@ fn is_empty_shell(raw_html: &[u8]) -> bool {
     ["id=\"root\"", "id=\"app\"", "__NEXT_DATA__"]
         .iter()
         .any(|marker| haystack.contains(marker))
+}
+
+/// Completes one run from an escalated rendered-DOM extraction: same IR storage,
+/// completion event, and success accounting as the direct path.
+async fn complete_escalated(
+    pool: &sqlx::PgPool,
+    store: &BlobStore,
+    run: &extractor_eventing::QueuedRun,
+    fetched: &FetchResult,
+    extraction: &HtmlExtraction,
+) -> Result<(), ProcessError> {
+    let ir_blob = store_document_ir(store, &extraction.document).await?;
+    let fetch = completed_fetch(fetched);
+    complete_document(
+        pool,
+        run.run_id,
+        &extraction.document,
+        &ir_blob,
+        &fetch,
+        &extraction.candidates,
+        &[],
+    )
+    .await?;
+    metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
+    Ok(())
+}
+
+/// Terminates one run whose escalation the policy denied: the quality rejection
+/// stands, and one resolution step records which gate denied.
+async fn record_policy_denial(
+    pool: &sqlx::PgPool,
+    run: &extractor_eventing::QueuedRun,
+    fetched: &FetchResult,
+    candidates: &[extractor_document_ir::CandidateDecision],
+    denial: escalation::EscalationDenial,
+) -> Result<(), ProcessError> {
+    tracing::info!(
+        run_id = %run.run_id,
+        denial = denial.as_str(),
+        "browser escalation denied by policy"
+    );
+    let fetch = completed_fetch(fetched);
+    reject_quality(
+        pool,
+        run.run_id,
+        &fetch,
+        candidates,
+        "quality",
+        &[ResolutionStep {
+            ordinal: 0,
+            kind: "render_policy",
+            outcome: Some(denial.as_str()),
+            failure_class: None,
+            resolved_url: None,
+        }],
+    )
+    .await?;
+    metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
+    Ok(())
 }
 
 async fn escalate_to_render(

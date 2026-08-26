@@ -8,7 +8,8 @@ use crate::{CompletedFetch, ConsumeError};
 pub struct ResolutionStep<'a> {
     /// Zero-based position of this step within the resolution sequence.
     pub ordinal: i32,
-    /// Step kind: `provider_attempt`, `resolved_target`, or `html_fallback`.
+    /// Step kind: `provider_attempt`, `resolved_target`, `html_fallback`, or
+    /// `render_policy`.
     pub kind: &'a str,
     /// Outcome label when the step produced one.
     pub outcome: Option<&'a str>,

@@ -2,6 +2,7 @@
 
 //! Process composition for Ratatoskr Extractor.
 
+mod escalation;
 mod pipeline;
 mod provider_continuation;
 mod youtube_media;
