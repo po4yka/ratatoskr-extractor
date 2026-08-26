@@ -193,8 +193,11 @@ The worker:
 - reuses a Chromium process while isolating each job in a fresh context;
 - blocks unnecessary images, video, fonts, trackers, and ads when possible;
 - enforces navigation, resource, memory, CPU, and wall-clock limits;
+- exits cleanly after `BROWSER_MAX_JOBS_PER_PROCESS` terminal jobs so its supervisor restarts it with fresh Chromium;
 - returns rendered DOM, final URL, response metadata, and network evidence;
 - does not run article interpretation or LLM agents.
+
+Escalation passes one deterministic policy: rendering enabled AND empty-shell evidence AND the host permitted by `render.allowed_hosts` (empty list means unrestricted) AND the durable per-day budget in `render.max_escalations_per_day` still has capacity. A denied escalation publishes no render command and records which gate refused.
 
 Browser control remains behind a replaceable `BrowserRenderer` interface. Multiple expensive browser engines are not raced by default.
 

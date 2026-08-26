@@ -8,4 +8,9 @@ RATATOSKR__BUS__DURABLE_NAME=ratatoskr_extractor_capture
 RATATOSKR__PARSER__MAX_INPUT_BYTES=52428800
 RATATOSKR__PARSER__MAX_DOM_NODES=250000
 RATATOSKR__FETCH__PER_HOST_MIN_INTERVAL_MS=500
+# Browser escalation stays off until explicitly enabled; when on, the host
+# allowlist (exact names, empty means unrestricted) and the daily ceiling bound it.
+RATATOSKR__RENDER__ENABLED=false
+RATATOSKR__RENDER__ALLOWED_HOSTS=[]
+RATATOSKR__RENDER__MAX_ESCALATIONS_PER_DAY=500
 RATATOSKR__TELEMETRY__LOG_FORMAT=json

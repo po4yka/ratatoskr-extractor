@@ -3,10 +3,11 @@
 > Status: Active
 > Last reviewed: 2026-08-21
 
-The Rust workspace implements plan items 1 through 8: foundation, URL/SSRF policy, bounded fetch,
+The Rust workspace implements plan items 1 through 11: foundation, URL/SSRF policy, bounded fetch,
 parse-once HTML candidates, deterministic quality selection, Document IR, PostgreSQL/JetStream
-inbox/outbox integration, direct PDF extraction, the Hacker News and Reddit provider adapters, and
-the isolated browser worker with deterministic empty-shell escalation behind `render.enabled`.
+inbox/outbox integration, direct PDF extraction, the Hacker News and Reddit provider adapters with
+link-post resolution, and the isolated browser worker whose escalation runs through one gated
+policy (`render.enabled`, `render.allowed_hosts`, `render.max_escalations_per_day`).
 PDFs without a text layer degrade explicitly; OCR stays out of scope. YouTube transcripts and
 delegated platform routes (GitHub, X, Instagram, Threads, Telegram) remain unimplemented here.
 
@@ -32,7 +33,12 @@ cargo build --workspace --locked --release
 Integration tests require the services they exercise: PostgreSQL on `5434` and JetStream NATS on
 `4222` (both from `compose.yaml`), and a Chrome or Chromium binary for the browser-worker tests —
 set `CHROME_BIN`, or keep a Chromium on `PATH`. CI provisions all three; a gate run without them
-fails rather than skips.
+fails rather than skips. Non-default service locations are honoured through
+`EXTRACTOR_TEST_DATABASE_URL` and `EXTRACTOR_TEST_NATS_URL`.
+
+The browser worker reads flat `BROWSER_*` environment variables; the deployment examples carry the
+full set. `BROWSER_MAX_JOBS_PER_PROCESS` (default 500) ends the process cleanly after that many
+terminal render jobs so its supervisor restarts it with fresh Chromium.
 
 The file-size ratchet is the one check that Cargo cannot express:
 

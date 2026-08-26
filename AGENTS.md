@@ -30,19 +30,22 @@ The extractor establishes what content was obtained and how. It does not interpr
 
 ## Current phase
 
-Plan items 1 through 6 of `docs/IMPLEMENTATION_PLAN.md` and direct PDF extraction are implemented:
-the process foundation, URL normalization and SSRF policy, one bounded streaming fetch into
-extractor-owned content-addressed storage, parse-once HTML candidates, deterministic quality
-selection, Document IR, PostgreSQL and JetStream inbox/outbox integration, and bounded PDF text
-extraction. Do not assume anything past that exists unless it is present in the checkout.
+Plan items 1 through 11 of `docs/IMPLEMENTATION_PLAN.md` are implemented: the process foundation,
+URL normalization and SSRF policy, one bounded streaming fetch into extractor-owned
+content-addressed storage, parse-once HTML candidates, deterministic quality selection, Document
+IR, PostgreSQL and JetStream inbox/outbox integration, bounded PDF text extraction, the Hacker
+News/Reddit provider adapters with link-post resolution, and the isolated browser worker with a
+deterministic gated escalation policy. Do not assume anything past that exists unless it is present
+in the checkout.
 
 What now exists: the `blob-store`, `core`, `document-ir`, `eventing`, `pdf`, `persistence`,
-`safe-fetch`, `telemetry`, `test-support` and `url-routing` crates, the `extractor` service under
-`services/`, `schema.sql`, the development stack in `compose.yaml`, the systemd unit and the
-database and bus grants under `deploy/`, and the CI gate in `.github/workflows/ci.yml`. Provider
-adapters, OCR and the browser worker remain absent, and the instruction above still applies to them
-in full. `DEVELOPMENT.md` states what is present and what is absent, command family by command
-family.
+`providers`, `render-job`, `safe-fetch`, `telemetry`, `test-support`, `url-routing` and `youtube`
+crates, the `extractor` and `browser-worker` services under `services/`, `schema.sql`, the
+development stack in `compose.yaml`, the systemd unit and the database and bus grants under
+`deploy/`, and the CI gate in `.github/workflows/ci.yml`. OCR, the expanded golden corpus,
+fuzzing/performance reports, and legacy shadow comparison remain absent, and the instruction above
+still applies to them in full. `DEVELOPMENT.md` states what is present and what is absent, command
+family by command family.
 
 When adding initial scaffolding:
 
