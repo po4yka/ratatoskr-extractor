@@ -20,6 +20,10 @@ fn nats_url() -> String {
     }
 }
 
+const ESCALATION_SHELL: &[u8] =
+    b"<html><body><div id=\"root\"></div><script src=\"/app.js\"></script></body></html>";
+const ESCALATION_RENDERED: &[u8] = b"<html><body><div id=\"root\"><p>Hydrated fixture content for the escalated run carries more than the threshold of deterministic prose so the shared evaluator accepts it.</p></div></body></html>";
+
 #[tokio::test]
 #[allow(
     clippy::large_futures,
@@ -27,20 +31,21 @@ fn nats_url() -> String {
 )]
 async fn empty_shell_escalates_and_completes_from_rendered_dom()
 -> Result<(), Box<dyn std::error::Error>> {
-    const SHELL: &[u8] =
-        b"<html><body><div id=\"root\"></div><script src=\"/app.js\"></script></body></html>";
-    const RENDERED: &[u8] = b"<html><body><div id=\"root\"><p>Hydrated fixture content for the escalated run carries more than the threshold of deterministic prose so the shared evaluator accepts it.</p></div></body></html>";
     let server = extractor_test_support::ScriptedServer::start(vec![
-        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(SHELL)])
-            .with_header(
-                http::header::CONTENT_TYPE,
-                http::HeaderValue::from_static("text/html"),
-            ),
-        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(RENDERED)])
-            .with_header(
-                http::header::CONTENT_TYPE,
-                http::HeaderValue::from_static("text/html"),
-            ),
+        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(
+            ESCALATION_SHELL,
+        )])
+        .with_header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/html"),
+        ),
+        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(
+            ESCALATION_RENDERED,
+        )])
+        .with_header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/html"),
+        ),
     ])
     .await?;
     let database = TestDatabase::create().await?;
@@ -152,11 +157,13 @@ async fn host_outside_the_allowlist_denies_without_rendering()
 -> Result<(), Box<dyn std::error::Error>> {
     const SHELL: &[u8] = b"<html><body><div id=\"root\"></div></body></html>";
     let server = extractor_test_support::ScriptedServer::start(vec![
-        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(SHELL)])
-            .with_header(
-                http::header::CONTENT_TYPE,
-                http::HeaderValue::from_static("text/html"),
-            ),
+        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(
+            ESCALATION_SHELL,
+        )])
+        .with_header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/html"),
+        ),
     ])
     .await?;
     let database = TestDatabase::create().await?;
@@ -237,11 +244,13 @@ async fn exhausted_daily_budget_denies_without_rendering() -> Result<(), Box<dyn
 {
     const SHELL: &[u8] = b"<html><body><div id=\"root\"></div></body></html>";
     let server = extractor_test_support::ScriptedServer::start(vec![
-        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(SHELL)])
-            .with_header(
-                http::header::CONTENT_TYPE,
-                http::HeaderValue::from_static("text/html"),
-            ),
+        extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(
+            ESCALATION_SHELL,
+        )])
+        .with_header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/html"),
+        ),
     ])
     .await?;
     let database = TestDatabase::create().await?;
