@@ -61,8 +61,8 @@ async fn transport_failures_surface_as_database_errors() {
         return;
     };
     let outcome = consume_render_budget(&broken, 1).await;
-    match outcome {
-        Err(ConsumeError::Database(_)) => {}
-        other => panic!("expected a database error, got {other:?}"),
-    }
+    assert!(
+        matches!(outcome, Err(ConsumeError::Database(_))),
+        "expected a database error, got {outcome:?}"
+    );
 }
