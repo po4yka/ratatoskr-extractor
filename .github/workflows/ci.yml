@@ -92,6 +92,6 @@ jobs:
       - name: Install pinned fuzz toolchain
         run: rustup toolchain install nightly-2026-06-11 --profile minimal
       - name: Install pinned cargo-fuzz
-        run: cargo +nightly-2026-06-11 install cargo-fuzz --version 0.13.1 --locked
+        run: cargo install cargo-fuzz --version 0.13.1 --locked
       - name: Run bounded corpus-seeded fuzz smoke
         run: tools/run-fuzz-smoke.sh
