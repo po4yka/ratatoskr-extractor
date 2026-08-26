@@ -31,6 +31,7 @@ async fn owned_schema_applies_once_with_all_item_six_tables()
             "media_archives",
             "outbox_events",
             "provider_resolutions",
+            "render_budgets",
             "sources",
         ]
     );
