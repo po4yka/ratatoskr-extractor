@@ -155,7 +155,6 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
 )]
 async fn host_outside_the_allowlist_denies_without_rendering()
 -> Result<(), Box<dyn std::error::Error>> {
-    const SHELL: &[u8] = b"<html><body><div id=\"root\"></div></body></html>";
     let server = extractor_test_support::ScriptedServer::start(vec![
         extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(
             ESCALATION_SHELL,
@@ -242,7 +241,6 @@ async fn host_outside_the_allowlist_denies_without_rendering()
 )]
 async fn exhausted_daily_budget_denies_without_rendering() -> Result<(), Box<dyn std::error::Error>>
 {
-    const SHELL: &[u8] = b"<html><body><div id=\"root\"></div></body></html>";
     let server = extractor_test_support::ScriptedServer::start(vec![
         extractor_test_support::ScriptedResponse::chunks([bytes::Bytes::from_static(
             ESCALATION_SHELL,
