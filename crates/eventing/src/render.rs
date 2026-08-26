@@ -49,7 +49,7 @@ pub enum RenderBudget {
 ///
 /// # Errors
 ///
-/// Returns [`ConsumeError`] when PostgreSQL access fails.
+/// Returns [`ConsumeError`] when `PostgreSQL` access fails.
 pub async fn consume_render_budget(
     pool: &sqlx::PgPool,
     max_escalations_per_day: u32,
