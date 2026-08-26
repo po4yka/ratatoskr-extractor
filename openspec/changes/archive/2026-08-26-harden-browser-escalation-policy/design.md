@@ -54,6 +54,16 @@ is platform-specific noise; cgroup memory/PID limits in the compose profile rema
 backstop, and recycling bounds the slow leaks cgroups tolerate. Deduplicated redeliveries do not
 count, so a busy-but-idempotent queue cannot spin the process down.
 
+### Production executor and supervisor limits
+
+The binary constructs `ChromiumExecutor::launch` before accepting commands, passing the optional
+typed `BROWSER_CHROME_BIN` value and retaining the production `NavigationPolicy` (loopback remains
+denied). This removes the placeholder executor that could only return `browser_unavailable` while
+leaving the test-only loopback policy confined to direct executor tests. The compose browser profile
+sets a finite CPU cap alongside its existing memory and PID caps, and uses `restart: always` so a
+clean job-budget exit or cgroup-enforced termination receives a fresh worker. No extractor database
+configuration enters this service.
+
 ### Denial recording rides existing columns
 
 A denied escalation records the ordinary quality rejection plus the run failure/diagnostic reason
@@ -70,6 +80,8 @@ matching is a config-visible follow-up, not a format change.
 ceiling.
 [Worker exits between deliveries] → supervisor restart cost lands once per N jobs; default 500
 keeps amortized launch cost negligible against per-page render seconds.
+[Chromium cannot launch] → startup exits nonzero before the consumer admits a command; the
+supervisor retries under the same process limits instead of publishing a misleading worker failure.
 [Counter table growth] → one row per UTC day; bounded by deployment lifetime and trivially
 prunable alongside existing retention work later.
 

@@ -37,8 +37,11 @@ fails rather than skips. Non-default service locations are honoured through
 `EXTRACTOR_TEST_DATABASE_URL` and `EXTRACTOR_TEST_NATS_URL`.
 
 The browser worker reads flat `BROWSER_*` environment variables; the deployment examples carry the
-full set. `BROWSER_MAX_JOBS_PER_PROCESS` (default 500) ends the process cleanly after that many
-terminal render jobs so its supervisor restarts it with fresh Chromium.
+full set. `BROWSER_CHROME_BIN` selects the Chromium executable and
+`BROWSER_MAX_JOBS_PER_PROCESS` (default 500) ends the process cleanly after that many terminal
+render jobs so its supervisor restarts it with fresh Chromium.
+The `browser` compose profile enforces a 2-CPU, 1-GiB, and 256-PID ceiling with `restart: always`;
+the job limit bounds slow leaks before the cgroup limits have to stop the process.
 
 The file-size ratchet is the one check that Cargo cannot express:
 

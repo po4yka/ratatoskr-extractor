@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-
 //! Extractor command inbox and transactional report outbox.
 
 mod consumer;
@@ -16,11 +15,10 @@ pub use render::{
 };
 
 pub use consumer::{ConsumerReport, run_command_consumer};
-pub use outbox::{NatsPublisher, OutboxReport, PublishError, Publisher, run_outbox_once};
-
 use extractor_blob_store::{BlobStore, BlobStoreError};
 use extractor_document_ir::CandidateDecision;
 use extractor_url_routing::{RoutingPolicy, SourceRoute, classify, normalize};
+pub use outbox::{NatsPublisher, OutboxReport, PublishError, Publisher, run_outbox_once};
 use ratatoskr_document_contracts::Document;
 use ratatoskr_error_contracts::{ErrorCode, ErrorEnvelope};
 use ratatoskr_event_envelope::{

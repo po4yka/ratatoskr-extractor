@@ -27,6 +27,8 @@ pub const EVENTS_STREAM: &str = "ratatoskr_events";
 pub struct WorkerSettings {
     /// NATS URL for the command and event bus.
     pub nats_url: String,
+    /// Optional explicit Chromium executable path.
+    pub chrome_bin: Option<String>,
     /// Content-addressed root owned by this worker.
     pub blobs_root: std::path::PathBuf,
     /// Durable consumer name.
@@ -41,6 +43,7 @@ impl Default for WorkerSettings {
     fn default() -> Self {
         Self {
             nats_url: "nats://127.0.0.1:4222".to_owned(),
+            chrome_bin: None,
             blobs_root: std::path::PathBuf::new(),
             durable_name: "ratatoskr_browser_worker".to_owned(),
             completions_bucket: DEFAULT_COMPLETIONS_BUCKET.to_owned(),

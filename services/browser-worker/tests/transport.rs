@@ -75,6 +75,7 @@ async fn commands_are_consumed_once_and_deduped() -> Result<(), Box<dyn std::err
     let bucket = format!("completions_{}", uuid::Uuid::now_v7().simple());
     let settings = WorkerSettings {
         nats_url: nats_url(),
+        chrome_bin: None,
         blobs_root: root.path().to_path_buf(),
         durable_name: durable,
         completions_bucket: bucket,
@@ -219,6 +220,7 @@ async fn consumer_exits_after_the_configured_job_count() -> Result<(), Box<dyn s
     let root = extractor_test_support::TemporaryBlobRoot::create().await?;
     let settings = WorkerSettings {
         nats_url: nats_url(),
+        chrome_bin: None,
         blobs_root: root.path().to_path_buf(),
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
@@ -283,6 +285,7 @@ async fn failed_jobs_count_toward_recycling() -> Result<(), Box<dyn std::error::
     let root = extractor_test_support::TemporaryBlobRoot::create().await?;
     let settings = WorkerSettings {
         nats_url: nats_url(),
+        chrome_bin: None,
         blobs_root: root.path().to_path_buf(),
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),

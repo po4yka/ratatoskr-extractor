@@ -28,7 +28,7 @@
 ## 6. Documentation and delivery
 
 - [x] 6.1 Correct the stale current-phase text in `AGENTS.md` (provider adapters, PDF, and the isolated browser worker are implemented), document `BROWSER_MAX_JOBS_PER_PROCESS` and the new `RENDER__ALLOWED_HOSTS` / `RENDER__MAX_ESCALATIONS_PER_DAY` knobs beside their siblings in `DEVELOPMENT.md`, deployment environment examples, and align the README escalation paragraph. No test: documentation verified against the built binaries.
-- [ ] 6.2 Run the exact DEVELOPMENT.md gate order including real PostgreSQL/JetStream/Chrome suites and the file-size ratchet, `openspec validate --archived --strict`, archive this change, integrate into `main`, push, and verify remote checks.
+- [x] 6.2 Run the exact DEVELOPMENT.md gate order including real PostgreSQL/JetStream/Chrome suites and the file-size ratchet, `openspec validate --archived --strict`, archive this change, integrate into `main`, push, and verify remote checks.
 
 Deviation note for 4.1: the host-allowlist denial went green on its first integration run because that gate's logic had already landed in the reviewed policy commit; the exhausted-budget denial shows the genuine red-to-green sequence (`navigation_timeout != quality` before wiring, quality rejection with a recorded gate afterwards).
 
@@ -38,3 +38,9 @@ The worker's setup created the shared `ratatoskr_events` stream with render-only
 
 - [x] 7.1 Reproduce the narrowing: run the outbox publisher suite on a broker where a browser-worker scenario created the events stream first and confirm every publish fails with "the message was not acknowledged by the bus" while `jsz` shows subjects `['evt.content.render.>']`.
 - [x] 7.2 Make the extractor the only creator of the shared event stream: `ensure_render_stream` now requires both fleet streams to exist and documents why, service integration suites create the event stream through the owner's publisher before spawning a worker, and the transport suite does the same through an eventing dev-dependency; rerun the outbox suite and the worker suites in both orders and confirm green.
+
+## 8. Production browser binding and supervised resource ceilings (discovered during final inspection)
+
+- [x] 8.1 Add a failing browser-worker binary test in `services/browser-worker/src/main.rs` that starts the production executor with a real headless browser and a loopback fixture command, asserting the command is rejected as `policy_blocked` (not `browser_unavailable`); run it while the binary uses the refusal-only executor and confirm the assertion fails.
+- [x] 8.2 Replace the refusal-only executor with the real Chromium executor using optional typed `BROWSER_CHROME_BIN` configuration and the production SSRF policy; set finite CPU and restart controls in the browser compose service so memory/PID/job ceilings have a supervisor; make 8.1 pass and run the worker lint/test gates.
+- [x] 8.3 Refactor the two over-limit Rust files without behavioural changes so the repository's existing file-size ratchet can pass; the full test suite was green before this task, so no RED applies.

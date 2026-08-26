@@ -13,5 +13,5 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /build/target/release/ratatoskr-browser-worker /usr/local/bin/
-ENV CHROME_BIN=/usr/bin/chromium
+ENV BROWSER_CHROME_BIN=/usr/bin/chromium
 ENTRYPOINT ["ratatoskr-browser-worker"]

@@ -37,10 +37,13 @@ services:
     profiles: ["browser"]
     environment:
       BROWSER_NATS_URL: "nats://ratatoskr-extractor-nats:4222"
+      BROWSER_CHROME_BIN: "/usr/bin/chromium"
       BROWSER_BLOBS_ROOT: "/data/blobs"
       BROWSER_MAX_JOBS_PER_PROCESS: 500
     volumes:
       - extractor-browser-blobs:/data/blobs
+    restart: always
+    cpus: 2.0
     mem_limit: 1g
     pids_limit: 256
     depends_on:

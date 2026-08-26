@@ -67,3 +67,9 @@ render SHALL NOT count as a handled job.
 
 - **WHEN** the configured limit is two and one job fails while one completes
 - **THEN** the worker exits cleanly after the second terminal outcome
+
+#### Scenario: the deployed binary uses the real renderer without weakening SSRF
+
+- **WHEN** the worker binary starts with a usable Chromium binary
+- **THEN** it launches the real Chromium executor, and a loopback render command is rejected as
+  `policy_blocked` rather than being treated as browser unavailability

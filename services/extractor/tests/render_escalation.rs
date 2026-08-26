@@ -82,6 +82,7 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
     .await?;
     let worker_settings = browser_worker::WorkerSettings {
         nats_url: nats_url(),
+        chrome_bin: None,
         blobs_root: worker_root.path().to_path_buf(),
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
