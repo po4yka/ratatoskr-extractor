@@ -180,26 +180,45 @@ async fn complete_html(
         Err(DocumentIrError::LowQuality { candidates }) => {
             // Deterministic escalation through one policy evaluation: only a
             // permitted decision publishes a render command, and this branch has
-            // no escalation of its own.
+            // no escalation of its own. The remaining gates decide first; the
+            // durable slot consumption is then the authoritative budget check on
+            // the permitted path, so concurrent runs can never exceed the ceiling.
             let empty_shell = is_empty_shell(&raw_html)
                 && candidates.iter().all(|c| c.metrics.text_characters < 120);
-            // The durable per-day counter feeds this gate once the render-budget
-            // storage lands; until then the gate is fed open.
-            let budget_remaining = true;
             let decision = escalation::decide(&escalation::EscalationInputs {
                 quality_rejected: true,
                 empty_shell_evidence: empty_shell,
                 host: fetched.final_url.host_str(),
                 config: render,
-                budget_remaining,
+                budget_remaining: true,
             });
             match decision {
                 EscalationDecision::Escalate => {
-                    if let Some(extraction) =
-                        escalate_to_render(pool, render, bus, parser, run, &fetched).await?
+                    match extractor_eventing::consume_render_budget(
+                        pool,
+                        render.max_escalations_per_day,
+                    )
+                    .await?
                     {
-                        complete_escalated(pool, store, run, &fetched, &extraction).await?;
-                        return Ok(());
+                        extractor_eventing::RenderBudget::Consumed { .. } => {
+                            if let Some(extraction) =
+                                escalate_to_render(pool, render, bus, parser, run, &fetched).await?
+                            {
+                                complete_escalated(pool, store, run, &fetched, &extraction).await?;
+                                return Ok(());
+                            }
+                        }
+                        extractor_eventing::RenderBudget::Exhausted => {
+                            record_policy_denial(
+                                pool,
+                                run,
+                                &fetched,
+                                &candidates,
+                                escalation::EscalationDenial::DailyBudgetExhausted,
+                            )
+                            .await?;
+                            return Ok(());
+                        }
                     }
                 }
                 EscalationDecision::Denied(denial) => {

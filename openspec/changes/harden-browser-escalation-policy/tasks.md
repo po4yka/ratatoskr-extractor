@@ -17,8 +17,8 @@
 
 ## 4. Extractor honours the gates end to end
 
-- [ ] 4.1 Add failing integration tests beside the existing escalation scenario (same real PostgreSQL/JetStream/Chrome harness): (a) a non-empty `allowed_hosts` excluding the fixture host denies with the recorded denial reason and publishes zero render commands while leaving the day counter at zero; (b) seeding the counter at its cap denies identically without advancing it; (c) the shipped hydration-shell scenario still completes when the policy permits. Run them and confirm (a)/(b) currently publish render commands because the gates do not exist.
-- [ ] 4.2 Wire the decision function and budget-slot consumption into the escalation path exactly as specified (deny records quality rejection plus the denial-class reason and publishes nothing; permit consumes the slot in the same step that precedes the command publication), make 4.1 pass alongside every existing suite, run service gates, and commit this pair.
+- [x] 4.1 Add failing integration tests beside the existing escalation scenario (same real PostgreSQL/JetStream/Chrome harness): (a) a non-empty `allowed_hosts` excluding the fixture host denies with the recorded denial reason and publishes zero render commands while leaving the day counter at zero; (b) seeding the counter at its cap denies identically without advancing it; (c) the shipped hydration-shell scenario still completes when the policy permits. Run them and confirm (a)/(b) currently publish render commands because the gates do not exist.
+- [x] 4.2 Wire the decision function and budget-slot consumption into the escalation path exactly as specified (deny records quality rejection plus the denial-class reason and publishes nothing; permit consumes the slot in the same step that precedes the command publication), make 4.1 pass alongside every existing suite, run service gates, and commit this pair.
 
 ## 5. Worker process recycling
 
@@ -29,3 +29,5 @@
 
 - [ ] 6.1 Correct the stale current-phase text in `AGENTS.md` (provider adapters, PDF, and the isolated browser worker are implemented), document `BROWSER_MAX_JOBS_PER_PROCESS` and the new `RENDER__ALLOWED_HOSTS` / `RENDER__MAX_ESCALATIONS_PER_DAY` knobs beside their siblings in `DEVELOPMENT.md`, deployment environment examples, and align the README escalation paragraph. No test: documentation verified against the built binaries.
 - [ ] 6.2 Run the exact DEVELOPMENT.md gate order including real PostgreSQL/JetStream/Chrome suites and the file-size ratchet, `openspec validate --archived --strict`, archive this change, integrate into `main`, push, and verify remote checks.
+
+Deviation note for 4.1: the host-allowlist denial went green on its first integration run because that gate's logic had already landed in the reviewed policy commit; the exhausted-budget denial shows the genuine red-to-green sequence (`navigation_timeout != quality` before wiring, quality rejection with a recorded gate afterwards).
