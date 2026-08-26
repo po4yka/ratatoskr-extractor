@@ -715,6 +715,7 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
         blobs_root: worker_root.path().to_path_buf(),
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
+        max_jobs_per_process: u32::MAX,
     };
     let worker_task = tokio::spawn(browser_worker::run_render_consumer(
         jetstream::new(nats_client.clone()),
@@ -759,9 +760,16 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
     assert_eq!(facts.0, "succeeded");
     assert_eq!(facts.1, 1);
     assert_eq!(facts.2, 1);
+    // Only the two scripted navigations count: current Chrome builds issue extra
+    // incidental subresource requests (favicon and friends) that the worker denies,
+    // so raw request totals are not hermetic across browser releases.
+    let page_navigations = server
+        .requests()
+        .iter()
+        .filter(|request| request.path_and_query.starts_with("/page"))
+        .count();
     assert_eq!(
-        server.request_count(),
-        2,
+        page_navigations, 2,
         "the shell is fetched directly and the hydrated page by the worker"
     );
 
