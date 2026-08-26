@@ -2,6 +2,8 @@
 
 use async_nats::jetstream;
 use futures_util::StreamExt as _;
+
+use crate::ConsumeError;
 use render_job::{
     RENDER_COMPLETED_SUBJECT, RENDER_FAILED_SUBJECT, RENDER_REQUESTED_SUBJECT, RenderCommand,
     RenderCompleted, RenderFailed,
@@ -25,6 +27,60 @@ pub enum RenderRequestError {
     /// The result did not arrive within the render budget.
     #[error("render result timed out")]
     Timeout,
+}
+
+/// Outcome of one per-UTC-day render-budget slot attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderBudget {
+    /// The slot was consumed; `count` is the day's escalation total after it.
+    Consumed {
+        /// The day counter value after consuming this slot.
+        count: i32,
+    },
+    /// The configured maximum is already reached for this UTC day.
+    Exhausted,
+}
+
+/// Consumes one slot of the durable per-UTC-day render budget atomically.
+///
+/// The seed and the guarded increment run inside one transaction; the `update`
+/// takes the day row's lock, so concurrent runs serialise against the committed
+/// counter and can never exceed the configured maximum.
+///
+/// # Errors
+///
+/// Returns [`ConsumeError`] when PostgreSQL access fails.
+pub async fn consume_render_budget(
+    pool: &sqlx::PgPool,
+    max_escalations_per_day: u32,
+) -> Result<RenderBudget, ConsumeError> {
+    let cap = i32::try_from(max_escalations_per_day)
+        .map_err(|_| ConsumeError::InvalidRunState)?
+        .saturating_sub(1);
+    let mut transaction = pool.begin().await?;
+    sqlx::query(
+        "insert into extractor.render_budgets (utc_day, escalated)
+         values (current_date, 0)
+         on conflict (utc_day) do nothing",
+    )
+    .execute(&mut *transaction)
+    .await?;
+    let consumed = sqlx::query_scalar::<_, i32>(
+        "update extractor.render_budgets
+            set escalated = escalated + 1
+          where utc_day = current_date
+            and escalated <= $1
+         returning escalated",
+    )
+    .bind(cap)
+    .fetch_optional(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(
+        consumed.map_or(RenderBudget::Exhausted, |count| RenderBudget::Consumed {
+            count,
+        }),
+    )
 }
 
 fn infrastructure<E>(error: E) -> RenderRequestError

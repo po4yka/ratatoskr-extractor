@@ -11,7 +11,9 @@ pub const EVENTS_STREAM: &str = "ratatoskr_events";
 mod terminal;
 
 pub use outbox::ensure_event_stream_on;
-pub use render::{RenderOutcome, RenderRequestError, request_render};
+pub use render::{
+    RenderBudget, RenderOutcome, RenderRequestError, consume_render_budget, request_render,
+};
 
 pub use consumer::{ConsumerReport, run_command_consumer};
 pub use outbox::{NatsPublisher, OutboxReport, PublishError, Publisher, run_outbox_once};

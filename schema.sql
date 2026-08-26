@@ -169,6 +169,14 @@ create table extractor.outbox_events (
 
 create index outbox_events_due_idx on extractor.outbox_events (next_attempt_at, enqueued_at) where published_at is null and dead_lettered_at is null;
 
+create table extractor.render_budgets (
+    utc_day    date    primary key,
+    escalated  integer not null,
+    constraint render_budgets_count_is_non_negative check (escalated >= 0)
+);
+
+comment on table extractor.render_budgets is 'Per-UTC-day count of published render commands; the escalation budget ceiling reads it atomically.';
+
 comment on schema extractor is 'State owned exclusively by ratatoskr-extractor.';
 comment on table extractor.artifacts is 'BlobRef fields only; raw artifact bytes never enter PostgreSQL.';
 comment on table extractor.media_archives is 'Retention-bounded media archive accounting; BlobRef facts live in artifacts.';
