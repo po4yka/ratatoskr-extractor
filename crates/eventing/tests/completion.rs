@@ -12,7 +12,7 @@ use ratatoskr_document_contracts::{
 };
 use ratatoskr_event_envelope::EventEnvelope;
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
 };
 use ratatoskr_operation_contracts::{OperationReported, OperationStatus};
 use serde_json::json;
@@ -197,6 +197,7 @@ fn document(
     document_id: DocumentId,
 ) -> Result<Document, Box<dyn std::error::Error>> {
     let blocks = vec![DocumentBlock::Paragraph {
+        block_id: BlockId::parse("018f0000-0000-7000-8000-000000000099")?,
         text: "One document.".to_owned(),
     }];
     let digest = format!(

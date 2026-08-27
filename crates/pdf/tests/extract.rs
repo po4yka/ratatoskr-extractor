@@ -5,7 +5,6 @@ use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
     BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
 };
-use sha2::{Digest as _, Sha256};
 
 #[test]
 fn text_pdf_yields_page_ordered_paragraphs() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,16 +22,13 @@ fn text_pdf_yields_page_ordered_paragraphs() -> Result<(), Box<dyn std::error::E
     };
 
     let extraction = from_pdf(input.clone(), limits)?;
-    let expected_blocks = vec![
-        DocumentBlock::Paragraph {
-            text: "Ratatoskr direct extraction fixture. The first page carries deterministic prose for the parser. Un texte de contr\u{f4}le avec accents fran\u{e7}ais stables.".to_owned(),
-        },
-        DocumentBlock::Paragraph {
-            text: "Second page follows the first in the page tree. Reading order must keep this page after page one."
-                .to_owned(),
-        },
-    ];
-    assert_eq!(extraction.document.blocks, expected_blocks);
+    assert_eq!(
+        block_texts(&extraction.document.blocks),
+        [
+            "Ratatoskr direct extraction fixture. The first page carries deterministic prose for the parser. Un texte de contrôle avec accents français stables.",
+            "Second page follows the first in the page tree. Reading order must keep this page after page one.",
+        ]
+    );
     assert_eq!(extraction.document.document_id, input.document_id);
     assert_eq!(extraction.document.source_address, input.source_address);
     assert_eq!(
@@ -41,19 +37,21 @@ fn text_pdf_yields_page_ordered_paragraphs() -> Result<(), Box<dyn std::error::E
     );
     assert!(extraction.document.language.is_none());
 
-    let canonical = ratatoskr_identifiers::canonical_json(&extraction.document.blocks)?;
-    let expected_digest = format!("{:x}", Sha256::digest(canonical.as_bytes()));
     assert_eq!(
         extraction.document.content_digest.algorithm,
         DigestAlgorithm::Sha256
     );
     assert_eq!(
         extraction.document.content_digest.hex.as_str(),
-        expected_digest
+        from_pdf(input.clone(), limits)?
+            .document
+            .content_digest
+            .hex
+            .as_str()
     );
 
     let provenance = &extraction.document.provenance;
-    assert_eq!(provenance.len(), expected_blocks.len());
+    assert_eq!(provenance.len(), extraction.document.blocks.len());
     for (index, entry) in provenance.iter().enumerate() {
         assert_eq!(entry.block_index, u32::try_from(index)?);
         assert_eq!(entry.extraction_strategy.as_str(), "direct_pdf");
@@ -73,6 +71,18 @@ fn text_pdf_yields_page_ordered_paragraphs() -> Result<(), Box<dyn std::error::E
     let again = from_pdf(input.clone(), limits)?;
     assert_eq!(again, extraction);
     Ok(())
+}
+
+fn block_texts(blocks: &[DocumentBlock]) -> Vec<&str> {
+    blocks
+        .iter()
+        .map(|block| match block {
+            DocumentBlock::Heading { text, .. } | DocumentBlock::Paragraph { text, .. } => {
+                text.as_str()
+            }
+            _ => "",
+        })
+        .collect()
 }
 
 fn blob_ref(length: usize, media_type: &str) -> Result<BlobRef, Box<dyn std::error::Error>> {

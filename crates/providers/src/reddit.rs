@@ -2,7 +2,7 @@
 
 use ratatoskr_document_contracts::DocumentBlock;
 
-use extractor_document_ir::evaluate_plain_text;
+use extractor_document_ir::{evaluate_plain_text, heading_block, paragraph_block};
 use serde::Deserialize;
 
 use crate::{AdapterExtraction, ProviderError, ProviderLimits};
@@ -72,10 +72,7 @@ pub(crate) fn from_listings(
         .to_owned();
     let external_url = post.data.url.clone();
 
-    let mut blocks = vec![DocumentBlock::Heading {
-        level: 1,
-        text: title.clone(),
-    }];
+    let mut blocks = vec![heading_block(1, title.clone())];
     push_text(post.data.selftext.as_deref(), limits, &mut blocks)?;
 
     let mut queue = std::collections::VecDeque::new();
@@ -116,8 +113,8 @@ fn push_text(
     if blocks.len() >= limits.max_blocks {
         return Err(ProviderError::ResourceLimit);
     }
-    blocks.push(DocumentBlock::Paragraph {
-        text: text.split_whitespace().collect::<Vec<_>>().join(" "),
-    });
+    blocks.push(paragraph_block(
+        text.split_whitespace().collect::<Vec<_>>().join(" "),
+    ));
     Ok(())
 }

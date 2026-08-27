@@ -1,13 +1,10 @@
 //! Shared plain-text evaluation feeding non-DOM extraction paths.
 
-use extractor_document_ir::{QualityReason, evaluate_plain_text};
-use ratatoskr_document_contracts::DocumentBlock;
+use extractor_document_ir::{QualityReason, evaluate_plain_text, paragraph_block};
 
 #[test]
 fn plain_text_candidate_reuses_shared_thresholds() {
-    let blocks = vec![DocumentBlock::Paragraph {
-        text: "ab".repeat(150),
-    }];
+    let blocks = vec![paragraph_block("ab".repeat(150))];
     let decision = evaluate_plain_text("direct_pdf", &blocks, Some("Direct Extraction Fixture"));
 
     assert_eq!(decision.strategy, "direct_pdf");
@@ -28,9 +25,7 @@ fn plain_text_candidate_reuses_shared_thresholds() {
 
 #[test]
 fn plain_text_below_volume_threshold_is_too_short_only() {
-    let blocks = vec![DocumentBlock::Paragraph {
-        text: "ab".repeat(50),
-    }];
+    let blocks = vec![paragraph_block("ab".repeat(50))];
     let decision = evaluate_plain_text("direct_pdf", &blocks, None);
 
     assert_eq!(decision.metrics.text_characters, 100);

@@ -8,9 +8,9 @@
 
 use std::panic::AssertUnwindSafe;
 
-use extractor_document_ir::{CandidateDecision, evaluate_plain_text};
+use extractor_document_ir::{CandidateDecision, evaluate_plain_text, paragraph_block};
 use lopdf::{Document as PdfDocument, Object};
-use ratatoskr_document_contracts::{Document, DocumentAddress, DocumentBlock, ExtractionStrategy};
+use ratatoskr_document_contracts::{Document, DocumentAddress, ExtractionStrategy};
 use ratatoskr_identifiers::{BlobRef, DocumentId};
 
 /// Stable extraction strategy recorded for the direct PDF path.
@@ -124,7 +124,7 @@ fn parse_document(
             return Err(PdfError::ResourceLimit);
         }
         if let Some(text) = normalized_paragraph(&page_text) {
-            blocks.push(DocumentBlock::Paragraph { text });
+            blocks.push(paragraph_block(text));
         }
     }
 

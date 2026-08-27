@@ -2560,6 +2560,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatoskr-ai-archive-contracts"
+version = "0.1.0"
+source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=4929b9659dfb80c768ae6340ef7fd981132dfaf3#4929b9659dfb80c768ae6340ef7fd981132dfaf3"
+dependencies = [
+ "ratatoskr-error-contracts",
+ "ratatoskr-event-envelope",
+ "ratatoskr-identifiers",
+ "regex",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ratatoskr-browser-worker"
 version = "0.1.0"
 dependencies = [
@@ -2587,7 +2602,7 @@ dependencies = [
 [[package]]
 name = "ratatoskr-document-contracts"
 version = "0.1.0"
-source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=d56c6891ce9b4fca2c65d43205080d9a666ab5a0#d56c6891ce9b4fca2c65d43205080d9a666ab5a0"
+source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=4929b9659dfb80c768ae6340ef7fd981132dfaf3#4929b9659dfb80c768ae6340ef7fd981132dfaf3"
 dependencies = [
  "ratatoskr-identifiers",
  "regex",
@@ -2598,7 +2613,7 @@ dependencies = [
 [[package]]
 name = "ratatoskr-error-contracts"
 version = "0.1.0"
-source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=d56c6891ce9b4fca2c65d43205080d9a666ab5a0#d56c6891ce9b4fca2c65d43205080d9a666ab5a0"
+source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=4929b9659dfb80c768ae6340ef7fd981132dfaf3#4929b9659dfb80c768ae6340ef7fd981132dfaf3"
 dependencies = [
  "jiff",
  "ratatoskr-identifiers",
@@ -2613,7 +2628,7 @@ dependencies = [
 [[package]]
 name = "ratatoskr-event-envelope"
 version = "0.1.0"
-source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=d56c6891ce9b4fca2c65d43205080d9a666ab5a0#d56c6891ce9b4fca2c65d43205080d9a666ab5a0"
+source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=4929b9659dfb80c768ae6340ef7fd981132dfaf3#4929b9659dfb80c768ae6340ef7fd981132dfaf3"
 dependencies = [
  "jiff",
  "ratatoskr-identifiers",
@@ -2676,9 +2691,11 @@ dependencies = [
  "html5ever",
  "ratatoskr-document-contracts",
  "ratatoskr-identifiers",
+ "serde",
  "serde_json",
  "sha2",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -2874,7 +2891,7 @@ dependencies = [
 [[package]]
 name = "ratatoskr-identifiers"
 version = "0.1.0"
-source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=d56c6891ce9b4fca2c65d43205080d9a666ab5a0#d56c6891ce9b4fca2c65d43205080d9a666ab5a0"
+source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=4929b9659dfb80c768ae6340ef7fd981132dfaf3#4929b9659dfb80c768ae6340ef7fd981132dfaf3"
 dependencies = [
  "jiff",
  "regex",
@@ -2888,9 +2905,10 @@ dependencies = [
 [[package]]
 name = "ratatoskr-operation-contracts"
 version = "0.1.0"
-source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=d56c6891ce9b4fca2c65d43205080d9a666ab5a0#d56c6891ce9b4fca2c65d43205080d9a666ab5a0"
+source = "git+https://github.com/po4yka/ratatoskr-contracts.git?rev=4929b9659dfb80c768ae6340ef7fd981132dfaf3#4929b9659dfb80c768ae6340ef7fd981132dfaf3"
 dependencies = [
  "jiff",
+ "ratatoskr-ai-archive-contracts",
  "ratatoskr-error-contracts",
  "ratatoskr-event-envelope",
  "ratatoskr-identifiers",
@@ -3816,7 +3834,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

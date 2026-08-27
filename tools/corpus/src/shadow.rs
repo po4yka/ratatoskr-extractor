@@ -460,7 +460,7 @@ impl CurrentDocument {
         for block in document.blocks {
             let (kind, value) = match block {
                 DocumentBlock::Heading { text, .. } => ("heading", text),
-                DocumentBlock::Paragraph { text } => ("paragraph", text),
+                DocumentBlock::Paragraph { text, .. } => ("paragraph", text),
                 _ => continue,
             };
             text.push(value);

@@ -8,7 +8,9 @@ mod dom;
 use ratatoskr_document_contracts::{
     Document, DocumentAddress, DocumentBlock, DocumentProvenance, ExtractionStrategy, LanguageTag,
 };
-use ratatoskr_identifiers::{BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId};
+use ratatoskr_identifiers::{
+    BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId,
+};
 use sha2::{Digest as _, Sha256};
 
 use crate::dom::{Element, HtmlDom};
@@ -73,6 +75,25 @@ pub struct HtmlExtraction {
     pub candidates: Vec<CandidateDecision>,
 }
 
+/// Builds an intermediate heading before [`assemble_document`] assigns its revision-bound ID.
+#[must_use]
+pub fn heading_block(level: u8, text: String) -> DocumentBlock {
+    DocumentBlock::Heading {
+        block_id: BlockId(uuid::Uuid::nil()),
+        level,
+        text,
+    }
+}
+
+/// Builds an intermediate paragraph before [`assemble_document`] assigns its revision-bound ID.
+#[must_use]
+pub fn paragraph_block(text: String) -> DocumentBlock {
+    DocumentBlock::Paragraph {
+        block_id: BlockId(uuid::Uuid::nil()),
+        text,
+    }
+}
+
 /// Finite parser budgets.
 #[derive(Debug, Clone, Copy)]
 pub struct ParseLimits {
@@ -108,6 +129,9 @@ pub enum DocumentIrError {
     /// Canonical block serialization failed.
     #[error("Document IR blocks could not be serialized")]
     Serialization(#[from] serde_json::Error),
+    /// A newer contract block kind cannot be assembled by this extractor build.
+    #[error("Document IR block kind is not supported by this extractor build")]
+    UnsupportedBlock,
     /// No candidate met the bounded quality thresholds.
     #[error("HTML candidate quality is below the acceptance threshold")]
     LowQuality {
@@ -207,10 +231,11 @@ pub fn assemble_document(
     strategy: &ExtractionStrategy,
     title: Option<String>,
     language: Option<LanguageTag>,
-    blocks: Vec<DocumentBlock>,
+    mut blocks: Vec<DocumentBlock>,
 ) -> Result<Document, DocumentIrError> {
-    let canonical = ratatoskr_identifiers::canonical_json(&blocks)?;
+    let canonical = canonical_block_content(&blocks)?;
     let digest = hex(&Sha256::digest(canonical.as_bytes()));
+    assign_block_ids(&mut blocks, &digest)?;
     let provenance = blocks
         .iter()
         .enumerate()
@@ -234,6 +259,53 @@ pub fn assemble_document(
         blocks,
         provenance,
     })
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum DigestBlock<'a> {
+    Heading { level: u8, text: &'a str },
+    Paragraph { text: &'a str },
+}
+
+fn canonical_block_content(blocks: &[DocumentBlock]) -> Result<String, DocumentIrError> {
+    let content = blocks
+        .iter()
+        .map(|block| match block {
+            DocumentBlock::Heading { level, text, .. } => Ok(DigestBlock::Heading {
+                level: *level,
+                text,
+            }),
+            DocumentBlock::Paragraph { text, .. } => Ok(DigestBlock::Paragraph { text }),
+            _ => Err(DocumentIrError::UnsupportedBlock),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ratatoskr_identifiers::canonical_json(&content)?)
+}
+
+fn assign_block_ids(
+    blocks: &mut [DocumentBlock],
+    content_digest: &str,
+) -> Result<(), DocumentIrError> {
+    for (index, block) in blocks.iter_mut().enumerate() {
+        let mut material = Sha256::new();
+        material.update(b"ratatoskr.document-ir.block.v1\\0");
+        material.update(content_digest.as_bytes());
+        let ordinal = u64::try_from(index).map_err(|_| DocumentIrError::InvalidIdentity)?;
+        material.update(ordinal.to_be_bytes());
+        let digest = material.finalize();
+        let mut bytes = [0_u8; 16];
+        bytes.copy_from_slice(digest.get(..16).ok_or(DocumentIrError::InvalidIdentity)?);
+        bytes[6] = (bytes[6] & 0x0f) | 0x80;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        let block_id = BlockId(uuid::Uuid::from_bytes(bytes));
+        match block {
+            DocumentBlock::Heading { block_id: id, .. }
+            | DocumentBlock::Paragraph { block_id: id, .. } => *id = block_id,
+            _ => return Err(DocumentIrError::UnsupportedBlock),
+        }
+    }
+    Ok(())
 }
 
 fn evaluate(candidate: &candidate::Candidate, title: Option<&str>) -> CandidateDecision {
@@ -366,18 +438,18 @@ fn block(element: Element<'_>) -> Option<DocumentBlock> {
         "h4" => heading(4, element),
         "h5" => heading(5, element),
         "h6" => heading(6, element),
-        "p" => normalized_text(element).map(|text| DocumentBlock::Paragraph { text }),
+        "p" => normalized_text(element).map(paragraph_block),
         _ => None,
     }
 }
 
 fn heading(level: u8, element: Element<'_>) -> Option<DocumentBlock> {
-    normalized_text(element).map(|text| DocumentBlock::Heading { level, text })
+    normalized_text(element).map(|text| heading_block(level, text))
 }
 
 fn block_text_len(block: &DocumentBlock) -> usize {
     match block {
-        DocumentBlock::Heading { text, .. } | DocumentBlock::Paragraph { text } => text.len(),
+        DocumentBlock::Heading { text, .. } | DocumentBlock::Paragraph { text, .. } => text.len(),
         _ => 0,
     }
 }

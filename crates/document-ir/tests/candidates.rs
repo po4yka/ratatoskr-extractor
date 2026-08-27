@@ -26,18 +26,11 @@ fn semantic_article_beats_page_chrome() -> Result<(), Box<dyn std::error::Error>
     )?;
 
     assert_eq!(
-        extraction.document.blocks,
-        vec![
-            DocumentBlock::Heading {
-                level: 1,
-                text: "Forest Dispatch".to_owned(),
-            },
-            DocumentBlock::Paragraph {
-                text: "The first field report contains enough useful article text to describe the route through the forest in detail.".to_owned(),
-            },
-            DocumentBlock::Paragraph {
-                text: "The second report confirms the destination and records the evidence needed by every later reader.".to_owned(),
-            },
+        block_texts(&extraction.document.blocks),
+        [
+            "Forest Dispatch",
+            "The first field report contains enough useful article text to describe the route through the forest in detail.",
+            "The second report confirms the destination and records the evidence needed by every later reader.",
         ]
     );
     assert_eq!(
@@ -56,6 +49,18 @@ fn semantic_article_beats_page_chrome() -> Result<(), Box<dyn std::error::Error>
             .all(|evidence| evidence.extraction_strategy.as_str() == "semantic")
     );
     Ok(())
+}
+
+fn block_texts(blocks: &[DocumentBlock]) -> Vec<&str> {
+    blocks
+        .iter()
+        .map(|block| match block {
+            DocumentBlock::Heading { text, .. } | DocumentBlock::Paragraph { text, .. } => {
+                text.as_str()
+            }
+            _ => "",
+        })
+        .collect()
 }
 
 fn blob_ref() -> Result<BlobRef, Box<dyn std::error::Error>> {

@@ -2,7 +2,9 @@
 
 use ratatoskr_document_contracts::DocumentBlock;
 
-use extractor_document_ir::{evaluate_plain_text, plain_text_fragment};
+use extractor_document_ir::{
+    evaluate_plain_text, heading_block, paragraph_block, plain_text_fragment,
+};
 use serde::Deserialize;
 
 use crate::{AdapterExtraction, ProviderError, ProviderLimits};
@@ -40,10 +42,7 @@ pub(crate) fn from_algolia(
         return Err(ProviderError::Schema);
     }
     let title = required_title(&root)?;
-    let mut blocks = vec![DocumentBlock::Heading {
-        level: 1,
-        text: title.clone(),
-    }];
+    let mut blocks = vec![heading_block(1, title.clone())];
     push_fragment(root.text.as_deref(), limits, &mut blocks)?;
     collect_comments(&root.children, limits, &mut blocks)?;
     let decision = evaluate_plain_text(HACKER_NEWS_STRATEGY, &blocks, Some(&title));
@@ -84,6 +83,6 @@ fn push_fragment(
     if blocks.len() >= limits.max_blocks {
         return Err(ProviderError::ResourceLimit);
     }
-    blocks.push(DocumentBlock::Paragraph { text });
+    blocks.push(paragraph_block(text));
     Ok(())
 }

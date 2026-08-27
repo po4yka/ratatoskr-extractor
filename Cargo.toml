@@ -42,11 +42,11 @@ ratatoskr-extractor-test-support = { version = "0.1.0", path = "crates/test-supp
 ratatoskr-extractor-url-routing = { version = "0.1.0", path = "crates/url-routing" }
 ratatoskr-extractor-youtube = { version = "0.1.0", path = "crates/youtube" }
 
-ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
-ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
-ratatoskr-error-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
-ratatoskr-event-envelope = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
-ratatoskr-operation-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "d56c6891ce9b4fca2c65d43205080d9a666ab5a0" }
+ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "4929b9659dfb80c768ae6340ef7fd981132dfaf3" }
+ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "4929b9659dfb80c768ae6340ef7fd981132dfaf3" }
+ratatoskr-error-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "4929b9659dfb80c768ae6340ef7fd981132dfaf3" }
+ratatoskr-event-envelope = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "4929b9659dfb80c768ae6340ef7fd981132dfaf3" }
+ratatoskr-operation-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "4929b9659dfb80c768ae6340ef7fd981132dfaf3" }
 
 async-compression = { version = "=0.4.43", default-features = false, features = ["brotli", "gzip", "tokio", "zstd"] }
 async-nats = "=0.50.0"

@@ -22,7 +22,7 @@ fn password_required_pdf_is_typed_encrypted() -> Result<(), Box<dyn std::error::
 fn blank_password_encrypted_pdf_extracts() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = include_bytes!("fixtures/encrypted-blank-password.pdf");
     let extraction = from_pdf(test_input(bytes)?, generous_limits())?;
-    let Some(DocumentBlock::Paragraph { text }) = extraction.document.blocks.first().cloned()
+    let Some(DocumentBlock::Paragraph { text, .. }) = extraction.document.blocks.first().cloned()
     else {
         return Err("blank-password fixture must yield one paragraph block".into());
     };

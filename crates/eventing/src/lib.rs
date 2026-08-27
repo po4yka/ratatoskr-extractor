@@ -687,6 +687,7 @@ async fn enqueue_completion_events(
             result_kind: OperationResultKind::parse("content.document")?,
             target: document.document_id.as_entity_ref(),
             blob: Some(ir_blob.clone()),
+            ai_archive_import_summary: None,
             extensions: Extensions::new(),
         }],
         error: None,

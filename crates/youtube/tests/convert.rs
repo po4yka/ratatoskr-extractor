@@ -88,18 +88,8 @@ fn segments_within_the_block_budget_become_one_paragraph_per_segment()
     let extraction = from_transcript(input(&meta(), segments.clone(), &blob)?, limits(5))?;
 
     assert_eq!(
-        extraction.document.blocks,
-        vec![
-            DocumentBlock::Paragraph {
-                text: "First line.".to_owned()
-            },
-            DocumentBlock::Paragraph {
-                text: "Second line.".to_owned()
-            },
-            DocumentBlock::Paragraph {
-                text: "Third line.".to_owned()
-            },
-        ]
+        block_texts(&extraction.document.blocks),
+        ["First line.", "Second line.", "Third line."]
     );
 
     let sidecar_blocks = &extraction.sidecar.blocks;
@@ -129,15 +119,8 @@ fn segments_past_the_block_budget_merge_into_deterministic_contiguous_groups()
     // floor(i * n / G): group 0 covers [0, 2), group 1 covers [2, 5).
     assert_eq!(extraction.document.blocks.len(), 2);
     assert_eq!(
-        extraction.document.blocks,
-        vec![
-            DocumentBlock::Paragraph {
-                text: "one two".to_owned()
-            },
-            DocumentBlock::Paragraph {
-                text: "three four five".to_owned()
-            },
-        ]
+        block_texts(&extraction.document.blocks),
+        ["one two", "three four five"]
     );
     assert_eq!(extraction.sidecar.segment_count, 5);
     assert_eq!(
@@ -245,4 +228,16 @@ fn a_zero_block_budget_is_a_resource_limit_failure() -> Result<(), Box<dyn std::
     .expect_err("a zero block budget must be refused");
     assert!(matches!(error, YoutubeError::ResourceLimit));
     Ok(())
+}
+
+fn block_texts(blocks: &[DocumentBlock]) -> Vec<&str> {
+    blocks
+        .iter()
+        .map(|block| match block {
+            DocumentBlock::Heading { text, .. } | DocumentBlock::Paragraph { text, .. } => {
+                text.as_str()
+            }
+            _ => "",
+        })
+        .collect()
 }

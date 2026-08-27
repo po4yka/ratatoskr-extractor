@@ -1,6 +1,6 @@
 //! Transcript-to-Document conversion with deterministic block grouping.
 
-use extractor_document_ir::{CandidateDecision, evaluate_plain_text};
+use extractor_document_ir::{CandidateDecision, evaluate_plain_text, paragraph_block};
 use ratatoskr_document_contracts::{Document, DocumentBlock, ExtractionStrategy, LanguageTag};
 
 use crate::Segment;
@@ -117,7 +117,7 @@ fn grouped_blocks(
             }
             end_ms = segment.start_ms.saturating_add(segment.duration_ms);
         }
-        blocks.push(DocumentBlock::Paragraph { text });
+        blocks.push(paragraph_block(text));
         timings.push(BlockTiming {
             block_index: u32::try_from(group).map_err(|_| YoutubeError::ResourceLimit)?,
             start_ms,
