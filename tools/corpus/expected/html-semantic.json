@@ -9,15 +9,18 @@
   "blocks": [
     {
       "kind": "heading",
+      "block_id": "44c80f73-b047-8b44-ab1e-0e40ce478c4f",
       "level": 1,
       "text": "Forest Networks"
     },
     {
       "kind": "paragraph",
+      "block_id": "50ee8efb-68cf-8f1c-9a55-1a6bbbcc1853",
       "text": "Trees exchange nutrients through fungal networks beneath the soil while researchers observe seasonal changes."
     },
     {
       "kind": "paragraph",
+      "block_id": "9c558aee-b8b3-884a-8706-14a5c064f65c",
       "text": "Repeated measurements connect water availability, habitat conditions, and the health of established woodland communities."
     }
   ],

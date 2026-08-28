@@ -89,6 +89,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: fuzz/Cargo.toml pins the same contracts revision as the root workspace
+        # fuzz/ is its own Cargo workspace with its own direct git-rev pins on the contracts
+        # crates, so bumping the root workspace's pin does not touch fuzz/'s. That drift compiles
+        # cleanly until fuzz/ is actually built, at which point Cargo sees the same crate names at
+        # two different revisions and every type constructed from them stops unifying. Catch the
+        # drift here, before either side is compiled.
+        run: |
+          set -euo pipefail
+          root_revs=$(grep -oE 'ratatoskr-contracts\.git", rev = "[0-9a-f]{40}"' Cargo.toml \
+            | grep -oE '[0-9a-f]{40}' | sort -u)
+          fuzz_revs=$(grep -oE 'ratatoskr-contracts\.git", rev = "[0-9a-f]{40}"' fuzz/Cargo.toml \
+            | grep -oE '[0-9a-f]{40}' | sort -u)
+          if [ "$(printf '%s\n' "$root_revs" | wc -l)" -ne 1 ]; then
+            echo "::error file=Cargo.toml::root workspace pins more than one ratatoskr-contracts revision: $root_revs"
+            exit 1
+          fi
+          if [ "$fuzz_revs" != "$root_revs" ]; then
+            echo "::error file=fuzz/Cargo.toml::fuzz pins ratatoskr-contracts rev(s) [$fuzz_revs], root workspace pins [$root_revs]"
+            exit 1
+          fi
+          echo "fuzz/Cargo.toml matches the root workspace pin: $root_revs"
+      - name: cargo check the fuzz crate on the pinned stable toolchain
+        # A plain type or dependency-graph error surfaces here in seconds, on the toolchain
+        # rust-toolchain.toml already pins, instead of only after the nightly toolchain install and
+        # cargo-fuzz build below have spent most of this job's 15-minute budget.
+        working-directory: fuzz
+        run: cargo check --locked
       - name: Install pinned fuzz toolchain
         run: rustup toolchain install nightly-2026-06-11 --profile minimal
       - name: Install pinned cargo-fuzz

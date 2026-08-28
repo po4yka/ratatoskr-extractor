@@ -9,19 +9,23 @@
   "blocks": [
     {
       "kind": "heading",
+      "block_id": "ed035cef-feb1-8e37-8284-36958b42b729",
       "level": 1,
       "text": "Deterministic extraction fixture post"
     },
     {
       "kind": "paragraph",
+      "block_id": "ffd2de33-02e6-87a9-a968-3f9ef9679e1b",
       "text": "Body text of the synthetic fixture post survives conversion."
     },
     {
       "kind": "paragraph",
+      "block_id": "b3db32dc-0eaf-83bf-b98e-b38a76b0fa37",
       "text": "Top-level comment body."
     },
     {
       "kind": "paragraph",
+      "block_id": "697aa81d-92ee-84a6-b13c-7cbaf84387f9",
       "text": "Nested reply body."
     }
   ],

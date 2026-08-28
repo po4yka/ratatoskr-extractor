@@ -9,15 +9,18 @@
   "blocks": [
     {
       "kind": "heading",
+      "block_id": "e78a7bc9-5386-85bd-8df1-464b478a17b3",
       "level": 1,
       "text": "Fixture story about deterministic provider extraction"
     },
     {
       "kind": "paragraph",
+      "block_id": "719c32f0-9ba5-8ea9-8a03-17fb2bfe6da4",
       "text": "First comment with \"quotes\" and italics survives conversion."
     },
     {
       "kind": "paragraph",
+      "block_id": "b99eb941-50a1-87c7-9ad1-d59037f291b3",
       "text": "Nested reply keeps pre-order position."
     }
   ],

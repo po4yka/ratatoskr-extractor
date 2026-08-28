@@ -329,14 +329,7 @@ pub async fn fail_run(
     .bind(failure_class)
     .fetch_optional(&mut *transaction)
     .await?
-    .map(
-        |(command_id, operation_id, owner_id, correlation_id)| CompletionContext {
-            command: command_id,
-            operation: operation_id,
-            owner: owner_id,
-            correlation: correlation_id,
-        },
-    );
+    .map(CompletionContext::from);
     let Some(context) = context else {
         transaction.commit().await?;
         return Ok(Completion::Duplicate);
@@ -430,14 +423,7 @@ pub async fn complete_document(
     .bind(document.document_id.0)
     .fetch_optional(&mut *transaction)
     .await?
-    .map(
-        |(command_id, operation_id, owner_id, correlation_id)| CompletionContext {
-            command: command_id,
-            operation: operation_id,
-            owner: owner_id,
-            correlation: correlation_id,
-        },
-    );
+    .map(CompletionContext::from);
     let Some(context) = context else {
         let status: Option<String> =
             sqlx::query_scalar("select status from extractor.extraction_runs where run_id = $1")
@@ -510,14 +496,7 @@ pub async fn reject_quality(
     .bind(failure_class)
     .fetch_optional(&mut *transaction)
     .await?
-    .map(
-        |(command_id, operation_id, owner_id, correlation_id)| CompletionContext {
-            command: command_id,
-            operation: operation_id,
-            owner: owner_id,
-            correlation: correlation_id,
-        },
-    );
+    .map(CompletionContext::from);
     let Some(context) = context else {
         transaction.commit().await?;
         return Ok(Completion::Duplicate);
@@ -622,11 +601,24 @@ pub async fn store_document_ir(
         .map_err(ConsumeError::ArtifactStore)
 }
 
+type CompletionRow = (uuid::Uuid, uuid::Uuid, uuid::Uuid, String);
+
 struct CompletionContext {
     command: uuid::Uuid,
     operation: uuid::Uuid,
     owner: uuid::Uuid,
     correlation: String,
+}
+
+impl From<CompletionRow> for CompletionContext {
+    fn from((command, operation, owner, correlation): CompletionRow) -> Self {
+        Self {
+            command,
+            operation,
+            owner,
+            correlation,
+        }
+    }
 }
 
 async fn enqueue_completion_events(

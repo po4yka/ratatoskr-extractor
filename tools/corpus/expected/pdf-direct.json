@@ -9,10 +9,12 @@
   "blocks": [
     {
       "kind": "paragraph",
+      "block_id": "4ef53539-4460-8bc4-89b2-6f46ea026976",
       "text": "Ratatoskr direct extraction fixture. The first page carries deterministic prose for the parser. Un texte de contrôle avec accents français stables."
     },
     {
       "kind": "paragraph",
+      "block_id": "5702cebc-8adc-87b6-9fa1-6d9b0a1c5545",
       "text": "Second page follows the first in the page tree. Reading order must keep this page after page one."
     }
   ],

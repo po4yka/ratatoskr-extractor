@@ -56,8 +56,13 @@ per-class success rates, directional normalized-token coverage, IR block statist
 an `approve`, `hold`, or `insufficient-evidence` recommendation. It is measurement only: owner
 approval and a separate change are required before any traffic switch.
 
-The CI `fuzz` job uses `nightly-2026-06-11` and `cargo-fuzz 0.13.1` to run the committed seed corpus
-for HTML, PDF, and URL classification targets for 15 seconds each. For a local smoke run:
+`fuzz/` is its own Cargo workspace with its own direct git-rev pins on the contracts crates, kept in
+sync with the root workspace's pins by hand. Before installing the nightly toolchain, the CI `fuzz`
+job checks that fuzz/Cargo.toml's pinned revision matches the root workspace's, then runs
+`cargo check --locked` against fuzz/ on the pinned stable toolchain, so a dependency-graph or type
+error surfaces in seconds rather than after the nightly toolchain and cargo-fuzz build below. The
+job then uses `nightly-2026-06-11` and `cargo-fuzz 0.13.1` to run the committed seed corpus for
+HTML, PDF, and URL classification targets for 15 seconds each. For a local smoke run:
 
 ```bash
 tools/run-fuzz-smoke.sh

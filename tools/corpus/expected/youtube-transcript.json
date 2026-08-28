@@ -10,14 +10,17 @@
   "blocks": [
     {
       "kind": "paragraph",
+      "block_id": "d74bc5b8-95d1-8b43-8aeb-8c4cbaf181fd",
       "text": "The committed transcript starts with a complete sentence."
     },
     {
       "kind": "paragraph",
+      "block_id": "20ceca4b-5488-8ad2-925c-6a2639d0fd9f",
       "text": "Its second cue preserves ordered provenance without live retrieval."
     },
     {
       "kind": "paragraph",
+      "block_id": "540bfa43-9525-8d51-b5ba-f05f02744b9a",
       "text": "The final cue makes the source document useful for deterministic testing."
     }
   ],
