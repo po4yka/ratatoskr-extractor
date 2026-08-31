@@ -1,0 +1,51 @@
+{
+  "document_id": "018f0000-0000-7000-8000-000000000021",
+  "source_address": "document:fixture-source",
+  "content_digest": {
+    "algorithm": "sha256",
+    "hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "title": "An example",
+  "language": "en",
+  "blocks": [
+    {
+      "kind": "heading",
+      "block_id": "018f0000-0000-7000-8000-000000000041",
+      "level": 1,
+      "text": "An example"
+    },
+    {
+      "kind": "paragraph",
+      "block_id": "018f0000-0000-7000-8000-000000000042",
+      "text": "The first paragraph."
+    }
+  ],
+  "provenance": [
+    {
+      "block_index": 0,
+      "extraction_strategy": "semantic_article",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        "media_type": "text/html",
+        "length_bytes": 42
+      }
+    },
+    {
+      "block_index": 1,
+      "extraction_strategy": "semantic_article",
+      "source_blob": {
+        "owner_service": "ratatoskr-extractor",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        "media_type": "text/html",
+        "length_bytes": 42
+      }
+    }
+  ]
+}

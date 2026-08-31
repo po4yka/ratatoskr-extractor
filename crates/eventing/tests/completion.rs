@@ -10,9 +10,12 @@ use extractor_test_support::TemporaryBlobRoot;
 use ratatoskr_document_contracts::{
     Document, DocumentAddress, DocumentBlock, DocumentProvenance, ExtractionStrategy,
 };
-use ratatoskr_event_envelope::EventEnvelope;
+use ratatoskr_event_envelope::{
+    EnvelopeSchemaVersion, EventEnvelope, EventPayload as _, ProducerName,
+};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, EntityRef,
+    EventId, Extensions, MediaType, TenantRef, WireTimestamp,
 };
 use ratatoskr_operation_contracts::{OperationReported, OperationStatus};
 use serde_json::json;
@@ -20,6 +23,56 @@ use sha2::{Digest as _, Sha256};
 use sqlx::Row as _;
 
 const SUBJECT: &str = "cmd.content.capture.requested.v1";
+
+#[test]
+fn document_completion_uses_registered_typed_event_without_wire_drift()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = include_str!("fixtures/document_extracted_existing_wire.json");
+    let document: Document = serde_json::from_str(fixture)?;
+    assert_eq!(
+        ratatoskr_identifiers::canonical_json(&document)?,
+        fixture,
+        "the Extractor compatibility fixture drifted from the typed Document wire"
+    );
+
+    let mut envelope = EventEnvelope {
+        event_id: EventId::parse("018f0000-0000-7000-8000-000000000001")?,
+        event_type: Document::event_type(),
+        occurred_at: WireTimestamp::parse("2026-08-21T10:00:00Z")?,
+        producer: ProducerName::parse("ratatoskr-extractor")?,
+        aggregate_id: document.document_id.as_entity_ref(),
+        correlation_id: EntityRef::parse("operation:018f0000-0000-7000-8000-000000000002")?,
+        causation_id: Some(EntityRef::parse(
+            "command:018f0000-0000-7000-8000-000000000003",
+        )?),
+        tenant_id: Some(TenantRef::parse(
+            "user:018f0000-0000-7000-8000-000000000004",
+        )?),
+        schema_version: EnvelopeSchemaVersion::CURRENT,
+        payload: serde_json::Map::new(),
+        extensions: Extensions::new(),
+    };
+    envelope.set_payload(&document)?;
+
+    assert_eq!(Document::EVENT_TYPE, "content.document.extracted.v1");
+    assert_eq!(envelope.event_type, Document::event_type());
+    assert_eq!(envelope.aggregate_id, document.document_id.as_entity_ref());
+    assert_eq!(envelope.payload_as::<Document>()?, document);
+    assert_eq!(
+        "evt.content.document.extracted.v1",
+        format!("evt.{}", Document::EVENT_TYPE)
+    );
+    let implementation = include_str!("../src/lib.rs");
+    assert!(
+        implementation.contains("document_event.set_payload(document)?;"),
+        "production still constructs the registered document event manually"
+    );
+    assert!(
+        !implementation.contains("EventType::parse(\"content.document.extracted.v1\")"),
+        "production still duplicates the registered event type string"
+    );
+    Ok(())
+}
 
 #[tokio::test]
 async fn completed_document_and_report_commit_with_one_run()
@@ -173,11 +226,23 @@ async fn verify_completion(
     assert_eq!(rows.len(), 2);
     let document_row = rows.first().ok_or("document event is missing")?;
     let report_row = rows.last().ok_or("operation report is missing")?;
+    assert_eq!(
+        document_row.try_get::<String, _>("subject")?,
+        "evt.content.document.extracted.v1"
+    );
     let document_envelope: EventEnvelope =
         serde_json::from_value(document_row.try_get("payload")?)?;
-    let emitted: Document =
-        serde_json::from_value(serde_json::Value::Object(document_envelope.payload))?;
+    assert_eq!(document_envelope.event_type, Document::event_type());
+    assert_eq!(
+        document_envelope.aggregate_id,
+        document.document_id.as_entity_ref()
+    );
+    let emitted = document_envelope.payload_as::<Document>()?;
     assert_eq!(&emitted, document);
+    assert_eq!(
+        ratatoskr_identifiers::canonical_json(&emitted)?.as_bytes(),
+        ratatoskr_identifiers::canonical_json(document)?.as_bytes()
+    );
     let report_envelope: EventEnvelope = serde_json::from_value(report_row.try_get("payload")?)?;
     let report = report_envelope.payload_as::<OperationReported>()?;
     assert_eq!(report.status, OperationStatus::Succeeded);

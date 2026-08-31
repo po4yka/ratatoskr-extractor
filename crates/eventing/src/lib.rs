@@ -22,7 +22,7 @@ pub use outbox::{NatsPublisher, OutboxReport, PublishError, Publisher, run_outbo
 use ratatoskr_document_contracts::Document;
 use ratatoskr_error_contracts::{ErrorCode, ErrorEnvelope};
 use ratatoskr_event_envelope::{
-    EnvelopeError, EnvelopeSchemaVersion, EventEnvelope, EventPayload as _, EventType, ProducerName,
+    EnvelopeError, EnvelopeSchemaVersion, EventEnvelope, EventPayload as _, ProducerName,
 };
 use ratatoskr_identifiers::{
     BlobRef, DocumentId, EntityRef, EventId, Extensions, OperationId, SafeMessage, TenantRef,
@@ -632,12 +632,9 @@ async fn enqueue_completion_events(
     let tenant_id = TenantRef::parse(&format!("user:{}", context.owner))?;
     let causation_id = EntityRef::parse(&format!("command:{}", context.command))?;
 
-    let serde_json::Value::Object(document_payload) = serde_json::to_value(document)? else {
-        return Err(ConsumeError::InvalidPayload);
-    };
-    let document_event = EventEnvelope {
+    let mut document_event = EventEnvelope {
         event_id: EventId::new_v7(),
-        event_type: EventType::parse("content.document.extracted.v1")?,
+        event_type: Document::event_type(),
         occurred_at: WireTimestamp::now(),
         producer: ProducerName::parse(PRODUCER)?,
         aggregate_id: document.document_id.as_entity_ref(),
@@ -645,9 +642,10 @@ async fn enqueue_completion_events(
         causation_id: Some(causation_id.clone()),
         tenant_id: Some(tenant_id),
         schema_version: EnvelopeSchemaVersion::CURRENT,
-        payload: document_payload,
+        payload: serde_json::Map::new(),
         extensions: Extensions::new(),
     };
+    document_event.set_payload(document)?;
     enqueue_event(
         transaction,
         context,
