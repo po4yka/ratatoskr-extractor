@@ -20,7 +20,6 @@ PDFs without a text layer degrade explicitly; OCR stays out of scope. Delegated 
 
 ```bash
 cargo fetch --locked
-cargo deny --locked check
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --workspace --locked
@@ -30,6 +29,9 @@ cargo run --locked -p ratatoskr-extractor-corpus --bin shadow-report -- --check
 cargo test --workspace --locked --doc
 cargo build --workspace --locked --release
 ```
+
+`cargo deny --locked check` runs in its own `deny` job, separate from the gate above, so a new
+RustSec advisory cannot hide a clippy or test failure behind it.
 
 The corpus report is an additional gate command because it collects maximum resident memory through
 the native platform `time` utility:
