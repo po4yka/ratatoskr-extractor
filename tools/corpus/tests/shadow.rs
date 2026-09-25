@@ -16,7 +16,7 @@ fn shadow_report_keeps_source_classes_independent() {
 
 #[test]
 fn shadow_report_matches_committed_review_artifact() -> Result<(), Box<dyn std::error::Error>> {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(); // wall-clock: opaque nonce for a unique temp-dir name, never read back
     let root = std::env::temp_dir().join(format!(
         "ratatoskr-shadow-review-{}-{nonce}",
         std::process::id()
@@ -47,7 +47,7 @@ fn shadow_report_matches_committed_review_artifact() -> Result<(), Box<dyn std::
 #[test]
 fn shadow_report_withholds_approval_for_coverage_regression()
 -> Result<(), Box<dyn std::error::Error>> {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(); // wall-clock: opaque nonce for a unique temp-dir name, never read back
     let root = std::env::temp_dir().join(format!(
         "ratatoskr-shadow-coverage-{}-{nonce}",
         std::process::id()

@@ -7,7 +7,7 @@ use extractor_corpus::{bless_case_at, verify_case_at};
 
 #[test]
 fn bless_updates_only_the_named_case() -> Result<(), Box<dyn std::error::Error>> {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(); // wall-clock: opaque nonce for a unique temp-dir name, never read back
     let root = std::env::temp_dir().join(format!(
         "ratatoskr-corpus-bless-{}-{nonce}",
         std::process::id()
