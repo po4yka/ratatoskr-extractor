@@ -73,6 +73,14 @@ impl Fixture {
 
     async fn process(&self, run: &QueuedRun) -> Result<(), Box<dyn std::error::Error>> {
         let config = ExtractorConfig::built_in(self.extractor_root.path());
+        Box::pin(self.process_with(run, config)).await
+    }
+
+    async fn process_with(
+        &self,
+        run: &QueuedRun,
+        config: ExtractorConfig,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let store = self.extractor_store();
         let fetcher = SafeFetcher::new_for_test(config.fetch.clone(), store.clone())?;
         let bus = RenderBus::new(
@@ -220,6 +228,56 @@ async fn blob_run_with_tampered_peer_bytes_fails_blob_mismatch()
     assert_eq!(
         fixture.outcome(&run).await?,
         ("failed".to_owned(), Some("blob_mismatch".to_owned()))
+    );
+    fixture.database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn blob_run_with_unreadable_peer_file_fails_blob_unreadable()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = Fixture::create().await?;
+    let peer = fixture.telegram_blob("application/pdf", TEXT_PDF).await?;
+    let run = fixture.lease(&peer).await?;
+    let path = fixture.telegram_store()?.resolve(&peer)?;
+    tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).await?;
+
+    let outcome = Box::pin(fixture.process(&run)).await;
+    // Restore access first so the temporary root can be removed whatever the assertion says.
+    tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).await?;
+    outcome?;
+
+    assert_eq!(
+        fixture.outcome(&run).await?,
+        ("failed".to_owned(), Some("blob_unreadable".to_owned()))
+    );
+    fixture.database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn blob_larger_than_the_pdf_input_limit_fails_parse_without_copying()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::create().await?;
+    let peer = fixture.telegram_blob("application/pdf", TEXT_PDF).await?;
+    let run = fixture.lease(&peer).await?;
+    let mut config = ExtractorConfig::built_in(fixture.extractor_root.path());
+    config.pdf.max_input_bytes = TEXT_PDF.len() - 1;
+
+    Box::pin(fixture.process_with(&run, config)).await?;
+
+    assert_eq!(
+        fixture.outcome(&run).await?,
+        ("failed".to_owned(), Some("parse".to_owned()))
+    );
+    assert!(
+        !fixture
+            .extractor_store()
+            .resolve(&peer)
+            .is_ok_and(|path| path.exists()),
+        "an oversize peer blob must not be copied into the extractor store"
     );
     fixture.database.cleanup().await?;
     Ok(())
