@@ -250,7 +250,20 @@ Implemented bus subjects are:
 cmd.content.capture.requested.v1
 evt.content.document.extracted.v1
 evt.platform.operation.reported.v1
+cmd.content.render.requested.v1        extractor to browser worker, internal
+evt.content.render.completed.v1        browser worker to extractor, internal
+evt.content.render.failed.v1           browser worker to extractor, internal
 ```
+
+The capture command is a typed `CommandEnvelope` carrying `ContentCaptureRequested`: either a public
+`url` or a `blob` reference to a PDF the Telegram service stored. A blob capture reads the bytes from
+the Telegram blob root (`blobs.telegram_root`, read-only), verifies them against the reference and
+extracts them through the same PDF path as a URL, with no network fetch. The document fact is the
+contract wrapper `ContentDocumentExtracted` (the document plus the Document IR `BlobRef`).
+
+The extractor and the browser worker each run under a narrow nkey identity and never create bus
+topology: Edge provisions the streams, the fixed durables and the completions bucket, and a process
+that finds one missing refuses to become ready. See `deploy/README.md`.
 
 Events are idempotent and correlated with Platform operations. Knowledge consumes accepted documents; it does not depend on extractor database tables.
 

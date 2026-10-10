@@ -78,6 +78,18 @@ set `CHROME_BIN`, or keep a Chromium on `PATH`. CI provisions all three; a gate 
 fails rather than skips. Non-default service locations are honoured through
 `EXTRACTOR_TEST_DATABASE_URL` and `EXTRACTOR_TEST_NATS_URL`.
 
+The authorized-broker tests (`crates/eventing/tests/authorized_bus.rs`,
+`services/browser-worker/tests/authorized_bus.rs`) start their own authorization-enabled
+`nats-server` from the shipped `deploy/nats/identity*.conf` fragments, so they need the
+`nats-server` executable (`NATS_SERVER_BIN`, default `nats-server` on `PATH`). A missing executable
+is a failure, not a skip. `EXTRACTOR_TEST_BROKER_PORTS=low-high` restricts the ports they may bind.
+
+Processes never create bus topology by default: Edge provisions the streams, durables and bucket.
+Tests and local runs against the unauthenticated development broker opt in with
+`RATATOSKR__BUS__PROVISION_TOPOLOGY=true` (the extractor) and `BROWSER_PROVISION_TOPOLOGY=true` (the
+browser worker, as the `browser` profile in `compose.yaml` sets). The switch is refused together
+with an nkey seed, and without it the capture durable name must stay `ratatoskr_extractor_capture`.
+
 The browser worker reads flat `BROWSER_*` environment variables; the deployment examples carry the
 full set. `BROWSER_CHROME_BIN` selects the Chromium executable and
 `BROWSER_MAX_JOBS_PER_PROCESS` (default 500) ends the process cleanly after that many terminal
