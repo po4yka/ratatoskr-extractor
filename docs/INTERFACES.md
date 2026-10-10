@@ -37,6 +37,12 @@ The extractor holds one nkey identity that may consume `ratatoskr_extractor_capt
 `ratatoskr_extractor_render_awaits`, and publish the two facts above plus the render command. It
 creates no stream, consumer or bucket; Edge provisions them (`deploy/README.md`).
 
+Render concurrency is limited to one in-flight request per process:
+`ratatoskr_extractor_render_awaits` is a single shared durable with no acknowledgement, so every
+completion it delivers is consumed whichever request polled it. A second concurrent render, or a
+second extractor process on the same durable, would drop completions meant for the other request and
+time out. The worker loop is serial, which keeps this safe today.
+
 ## Internal boundaries
 
 - `Fetcher`: one safe HTTP transaction sequence with limits and conditional cache.

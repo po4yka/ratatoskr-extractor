@@ -24,7 +24,7 @@
 
 ## 6. Blob runs through the PDF path
 
-- [x] 6.1 Add failing tests in `services/extractor/tests/pdf_pipeline.rs`: `blob_pdf_run_completes_end_to_end`, `blob_run_with_missing_peer_file_fails_blob_missing`, `blob_run_with_tampered_peer_bytes_fails_blob_mismatch`, `blob_run_with_foreign_owner_fails_blob_owner`, `blob_run_with_image_media_type_fails_unsupported_media`, `blob_pdf_without_text_layer_records_pdf_no_text_layer`. Expected failure today: `process_run` treats the urn as an HTTP address.
+- [x] 6.1 Add failing tests in `services/extractor/tests/blob_pdf_pipeline.rs`: `blob_pdf_run_completes_end_to_end`, `blob_run_with_missing_peer_file_fails_blob_missing`, `blob_run_with_tampered_peer_bytes_fails_blob_mismatch`, `blob_run_with_foreign_owner_fails_blob_owner`, `blob_run_with_image_media_type_fails_unsupported_media`, `blob_pdf_without_text_layer_records_pdf_no_text_layer`. Expected failure today: `process_run` treats the urn as an HTTP address.
 - [x] 6.2 Branch `process_run` on the blob, verify via the peer store, copy into the extractor store, share `finish_pdf` with URL runs, and add `complete_blob_document` and `reject_blob_quality` over private inners. Verify: 6.1 green and the URL PDF tests unchanged.
 
 ## 7. Provisioning switch
