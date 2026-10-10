@@ -52,6 +52,14 @@ jobs:
           done
           docker logs nats >&2
           exit 1
+      - name: Take the nats-server binary from the broker image for the authorized-broker tests
+        # The identity-matrix tests start their own authorization-enabled broker from the shipped
+        # permission fragments, so they need the executable itself. The image carries it as a
+        # static binary at the filesystem root.
+        run: |
+          docker cp nats:/nats-server "$RUNNER_TEMP/nats-server"
+          echo "NATS_SERVER_BIN=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/nats-server" --version
       - name: Install Google Chrome for browser-worker tests
         run: |
           wget -qO /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
