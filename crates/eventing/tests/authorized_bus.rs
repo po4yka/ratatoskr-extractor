@@ -212,6 +212,9 @@ async fn a_render_request_is_awaited_through_the_fixed_durable()
     .connect(harness.broker.url())
     .await?;
     let mut requests = admin_client.subscribe(RENDER_REQUESTED_SUBJECT).await?;
+    // The subscription is queued locally; flush so the broker has registered it before the
+    // extractor connection publishes the request.
+    admin_client.flush().await?;
     let admin = harness.admin.clone();
     let stub = tokio::spawn(async move {
         let Some(message) = requests.next().await else {
