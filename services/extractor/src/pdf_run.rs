@@ -2,6 +2,7 @@
 
 use extractor_blob_store::BlobStore;
 use extractor_core::PdfConfig;
+use extractor_document_ir::CandidateDecision;
 use extractor_eventing::{
     complete_blob_document, complete_document, fail_run, reject_blob_quality, reject_quality,
     store_document_ir,
@@ -35,7 +36,13 @@ pub(crate) async fn complete_pdf(
     let address = DocumentAddress::parse(fetched.final_url.as_str())
         .map_err(|_| ProcessError::DocumentIdentity)?;
     let raw = fetched.artifact.clone();
-    finish_pdf(pool, store, pdf, run, &raw, address, bytes, Some(&fetched)).await
+    let input = PdfRunInput {
+        raw: &raw,
+        address,
+        bytes,
+        fetched: Some(&fetched),
+    };
+    finish_pdf(pool, store, pdf, run, input).await
 }
 
 /// Completes one run whose PDF bytes another service stored.
@@ -84,7 +91,13 @@ pub(crate) async fn complete_blob_pdf(
     }
     let address =
         DocumentAddress::parse(run.url.as_str()).map_err(|_| ProcessError::DocumentIdentity)?;
-    finish_pdf(pool, store, pdf, run, &raw, address, bytes, None).await
+    let input = PdfRunInput {
+        raw: &raw,
+        address,
+        bytes,
+        fetched: None,
+    };
+    finish_pdf(pool, store, pdf, run, input).await
 }
 
 /// Maps a peer-store refusal to the stable failure class recorded on the run.
@@ -108,24 +121,61 @@ async fn fail_blob_run(
     Ok(())
 }
 
+/// What a verified PDF run hands to [`finish_pdf`].
+struct PdfRunInput<'a> {
+    /// The extractor-owned raw artifact holding exactly `bytes`.
+    raw: &'a BlobRef,
+    /// The identity the document is published under.
+    address: DocumentAddress,
+    /// The verified PDF bytes, parsed once.
+    bytes: bytes::Bytes,
+    /// Fetch facts of a URL run, committed with the result; absent for a blob run, which has none.
+    fetched: Option<&'a FetchResult>,
+}
+
+/// Records the degraded outcome of a PDF without a text layer, with or without fetch facts.
+async fn reject_no_text_layer(
+    pool: &sqlx::PgPool,
+    run: &extractor_eventing::QueuedRun,
+    raw: &BlobRef,
+    fetched: Option<&FetchResult>,
+    candidates: &[CandidateDecision],
+) -> Result<(), ProcessError> {
+    match fetched {
+        Some(fetched) => {
+            let fetch = completed_fetch(fetched);
+            reject_quality(
+                pool,
+                run.run_id,
+                &fetch,
+                candidates,
+                "pdf_no_text_layer",
+                &[],
+            )
+            .await?;
+        }
+        None => {
+            reject_blob_quality(pool, run.run_id, raw, candidates, "pdf_no_text_layer", &[])
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 /// Parses verified PDF bytes once and commits the terminal state.
-///
-/// `fetched` is present for a URL run, whose fetch facts are committed with the result, and absent
-/// for a blob run, which has none.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the pipeline owns one handle for each process resource and the parse inputs"
-)]
 async fn finish_pdf(
     pool: &sqlx::PgPool,
     store: &BlobStore,
     pdf: &PdfConfig,
     run: &extractor_eventing::QueuedRun,
-    raw: &BlobRef,
-    address: DocumentAddress,
-    bytes: bytes::Bytes,
-    fetched: Option<&FetchResult>,
+    input: PdfRunInput<'_>,
 ) -> Result<(), ProcessError> {
+    let PdfRunInput {
+        raw,
+        address,
+        bytes,
+        fetched,
+    } = input;
     let limits = PdfParseLimits {
         max_input_bytes: pdf.max_input_bytes,
         max_pages: pdf.max_pages,
@@ -154,31 +204,7 @@ async fn finish_pdf(
         Ok(extraction) => extraction,
         Err(PdfError::NoTextLayer { candidates }) => {
             tracing::info!(run_id = %run.run_id, "PDF has no text layer; recording degraded outcome");
-            match fetched {
-                Some(fetched) => {
-                    let fetch = completed_fetch(fetched);
-                    reject_quality(
-                        pool,
-                        run.run_id,
-                        &fetch,
-                        &candidates,
-                        "pdf_no_text_layer",
-                        &[],
-                    )
-                    .await?;
-                }
-                None => {
-                    reject_blob_quality(
-                        pool,
-                        run.run_id,
-                        raw,
-                        &candidates,
-                        "pdf_no_text_layer",
-                        &[],
-                    )
-                    .await?;
-                }
-            }
+            reject_no_text_layer(pool, run, raw, fetched, &candidates).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
         }
