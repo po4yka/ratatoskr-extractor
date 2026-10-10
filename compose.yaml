@@ -40,6 +40,8 @@ services:
       BROWSER_CHROME_BIN: "/usr/bin/chromium"
       BROWSER_BLOBS_ROOT: "/data/blobs"
       BROWSER_MAX_JOBS_PER_PROCESS: 500
+      # The development broker is unauthenticated; production gets its topology from Edge.
+      BROWSER_PROVISION_TOPOLOGY: "true"
     volumes:
       - extractor-browser-blobs:/data/blobs
     restart: always
@@ -47,7 +49,7 @@ services:
     mem_limit: 1g
     pids_limit: 256
     depends_on:
-      ratatoskr-extractor-nats:
+      nats:
         condition: service_healthy
 
 volumes:

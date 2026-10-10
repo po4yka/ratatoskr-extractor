@@ -80,6 +80,8 @@ async fn commands_are_consumed_once_and_deduped() -> Result<(), Box<dyn std::err
         durable_name: durable,
         completions_bucket: bucket,
         max_jobs_per_process: u32::MAX,
+        nkey_seed_path: None,
+        provision_topology: true,
     };
     // The shared command stream belongs to the fleet pipeline; the test provisions it.
     let _ = context
@@ -225,6 +227,8 @@ async fn consumer_exits_after_the_configured_job_count() -> Result<(), Box<dyn s
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
         max_jobs_per_process: 2,
+        nkey_seed_path: None,
+        provision_topology: true,
     };
     provision_fresh_stream(&context).await?;
     let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;
@@ -290,6 +294,8 @@ async fn failed_jobs_count_toward_recycling() -> Result<(), Box<dyn std::error::
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
         max_jobs_per_process: 2,
+        nkey_seed_path: None,
+        provision_topology: true,
     };
     provision_fresh_stream(&context).await?;
     let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;

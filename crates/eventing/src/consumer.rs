@@ -1,11 +1,10 @@
 //! Durable capture-command consumption.
 
-use async_nats::jetstream;
 use futures_util::StreamExt as _;
 use sqlx::PgPool;
 use tokio_util::sync::CancellationToken;
 
-use crate::{ConsumeError, NatsPublisher, consume_capture};
+use crate::{ConsumeError, NatsPublisher, consume_capture, topology};
 
 /// Outcome of one joined command-consumer run.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -22,35 +21,36 @@ pub struct ConsumerReport {
 
 /// Consumes capture commands until cancellation and acknowledges only durable outcomes.
 ///
+/// With `provision_topology` false the capture durable must already exist as Edge specified it; it
+/// is fetched and verified, never created. With it true (an unauthenticated development broker
+/// only) the stream and durable are created when absent.
+///
 /// # Errors
 ///
-/// Returns [`crate::PublishError`] when stream or durable-consumer setup fails.
+/// Returns [`crate::PublishError`] when the durable is absent or different (verified mode) or when
+/// stream or durable setup fails (provisioning mode).
 pub async fn run_command_consumer(
     publisher: &NatsPublisher,
     pool: &PgPool,
     durable_name: &str,
+    provision_topology: bool,
     cancellation: CancellationToken,
 ) -> Result<ConsumerReport, crate::PublishError> {
-    publisher.ensure_command_stream().await?;
-    let stream = publisher
-        .context()
-        .get_stream("ratatoskr_commands")
-        .await
-        .map_err(crate::PublishError::new)?;
-    let consumer = stream
-        .get_or_create_consumer(
-            durable_name,
-            jetstream::consumer::pull::Config {
-                durable_name: Some(durable_name.to_owned()),
-                filter_subject: "cmd.content.capture.requested.v1".to_owned(),
-                ack_policy: jetstream::consumer::AckPolicy::Explicit,
-                ack_wait: std::time::Duration::from_secs(30),
-                max_deliver: 12,
-                ..jetstream::consumer::pull::Config::default()
-            },
-        )
-        .await
-        .map_err(crate::PublishError::new)?;
+    let consumer = if provision_topology {
+        publisher.ensure_command_stream().await?;
+        publisher
+            .context()
+            .get_stream(crate::COMMAND_STREAM)
+            .await
+            .map_err(crate::PublishError::new)?
+            .get_or_create_consumer(durable_name, topology::capture_config(durable_name))
+            .await
+            .map_err(crate::PublishError::new)?
+    } else {
+        topology::capture_consumer(publisher.context(), durable_name)
+            .await
+            .map_err(crate::PublishError::new)?
+    };
     let mut messages = consumer
         .messages()
         .await

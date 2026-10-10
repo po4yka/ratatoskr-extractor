@@ -9,7 +9,10 @@ use extractor_blob_store::BlobStore;
 use extractor_core::{
     ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig, RenderConfig, YoutubeConfig,
 };
-use extractor_eventing::{NatsPublisher, claim_queued_run, run_command_consumer, run_outbox_once};
+use extractor_eventing::{
+    NatsPublisher, RenderBus, claim_queued_run, run_command_consumer, run_outbox_once,
+    verify_bus_topology,
+};
 use extractor_persistence::Database;
 use extractor_safe_fetch::SafeFetcher;
 use extractor_service::{
@@ -32,8 +35,8 @@ async fn main() {
     match command() {
         Ok(Command::CheckConfig) => {}
         Ok(Command::Run) => {
-            if run(config).await.is_err() {
-                eprintln!("extractor startup or runtime failed");
+            if let Err(error) = run(config).await {
+                eprintln!("extractor startup or runtime failed: {error}");
                 std::process::exit(1);
             }
         }
@@ -72,6 +75,8 @@ async fn run_initialized(
 ) -> Result<(), ProcessError> {
     let store = BlobStore::new(Path::new(&config.blobs.root));
     store.prepare().await?;
+    let telegram =
+        BlobStore::new(Path::new(&config.blobs.telegram_root)).with_owner("ratatoskr-telegram")?;
     let fetcher = SafeFetcher::new(config.fetch.clone(), &config.blobs.root)?;
     let database = Database::connect(
         config.database.url.expose_secret(),
@@ -84,8 +89,13 @@ async fn run_initialized(
         Some(path) => NatsPublisher::connect_with_nkey(&config.bus.url, path).await?,
         None => NatsPublisher::connect(&config.bus.url).await?,
     };
-    publisher.ensure_command_stream().await?;
-    publisher.ensure_event_stream().await?;
+    if config.bus.provision_topology {
+        publisher.ensure_command_stream().await?;
+        publisher.ensure_event_stream().await?;
+    } else {
+        // Edge owns the topology; refuse to become ready until it has provisioned it.
+        verify_bus_topology(&publisher, &config.bus.durable_name).await?;
+    }
     let listener = tokio::net::TcpListener::bind(config.admin.bind).await?;
     let health = RuntimeHealth::new();
     let admission = AdmissionController::new();
@@ -106,6 +116,7 @@ async fn run_initialized(
         &publisher,
         fetcher,
         store,
+        telegram,
         health.clone(),
         admission.clone(),
         &background_cancel,
@@ -155,18 +166,27 @@ fn spawn_background_loops(
     publisher: &NatsPublisher,
     fetcher: SafeFetcher,
     store: BlobStore,
+    telegram: BlobStore,
     health: RuntimeHealth,
     admission: AdmissionController,
     background_cancel: &CancellationToken,
 ) {
-    let bus = publisher.context().clone();
+    let bus = RenderBus::new(publisher.context().clone(), config.bus.provision_topology);
     tasks.spawn({
         let publisher = publisher.clone();
         let pool = database.pool().clone();
         let durable = config.bus.durable_name.clone();
+        let provision_topology = config.bus.provision_topology;
         let cancellation = background_cancel.child_token();
         async move {
-            run_command_consumer(&publisher, &pool, &durable, cancellation).await?;
+            run_command_consumer(
+                &publisher,
+                &pool,
+                &durable,
+                provision_topology,
+                cancellation,
+            )
+            .await?;
             Ok::<_, ProcessError>(())
         }
     });
@@ -188,6 +208,7 @@ fn spawn_background_loops(
         database.pool().clone(),
         fetcher,
         store,
+        telegram,
         config.parser.clone(),
         config.pdf.clone(),
         config.providers.clone(),
@@ -257,12 +278,13 @@ async fn worker_loop(
     pool: sqlx::PgPool,
     fetcher: SafeFetcher,
     store: BlobStore,
+    telegram: BlobStore,
     parser: ParserConfig,
     pdf: PdfConfig,
     providers: ProvidersConfig,
     render: RenderConfig,
     youtube: YoutubeConfig,
-    bus: async_nats::jetstream::Context,
+    bus: RenderBus,
     lease_seconds: i32,
     poll_interval_ms: u64,
     admission: AdmissionController,
@@ -291,6 +313,7 @@ async fn worker_loop(
                 &pool,
                 &fetcher,
                 &store,
+                &telegram,
                 &parser,
                 &pdf,
                 &providers,

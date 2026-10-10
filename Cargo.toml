@@ -63,6 +63,7 @@ http-body-util = "0.1.5"
 hyper = { version = "1.11.0", features = ["http1", "server"] }
 hyper-util = { version = "0.1.20", features = ["server-auto", "tokio"] }
 metrics = "0.24.6"
+nkeys = "0.4.5"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
 opentelemetry = "0.32.0"
 opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["grpc-tonic", "trace", "tls-ring", "tls-roots", "tls-webpki-roots"] }

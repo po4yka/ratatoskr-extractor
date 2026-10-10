@@ -34,6 +34,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+figment = { workspace = true, features = ["test"] }
 http.workspace = true
 ratatoskr-extractor-eventing.workspace = true
 reqwest = { workspace = true }

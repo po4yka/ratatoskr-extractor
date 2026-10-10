@@ -47,11 +47,7 @@ impl NatsPublisher {
     ///
     /// Returns [`PublishError`] when NATS is unavailable.
     pub async fn connect(url: &str) -> Result<Self, PublishError> {
-        let client = async_nats::connect(url).await.map_err(PublishError::new)?;
-        Ok(Self {
-            context: jetstream::new(client.clone()),
-            client,
-        })
+        Self::connect_with_options(url, async_nats::ConnectOptions::new()).await
     }
 
     /// Connects with the nkey seed stored in a deployment file.
@@ -64,10 +60,24 @@ impl NatsPublisher {
         seed_path: &std::path::Path,
     ) -> Result<Self, PublishError> {
         let seed = std::fs::read_to_string(seed_path).map_err(PublishError::new)?;
-        let client = async_nats::ConnectOptions::with_nkey(seed.trim().to_owned())
-            .connect(url)
-            .await
-            .map_err(PublishError::new)?;
+        Self::connect_with_options(
+            url,
+            async_nats::ConnectOptions::with_nkey(seed.trim().to_owned()),
+        )
+        .await
+    }
+
+    /// Connects with caller-supplied authentication, for example an administrator that provisions
+    /// topology the way Edge does.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PublishError`] when NATS is unavailable or refuses the credentials.
+    pub async fn connect_with_options(
+        url: &str,
+        options: async_nats::ConnectOptions,
+    ) -> Result<Self, PublishError> {
+        let client = options.connect(url).await.map_err(PublishError::new)?;
         Ok(Self {
             context: jetstream::new(client.clone()),
             client,

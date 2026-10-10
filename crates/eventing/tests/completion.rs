@@ -7,15 +7,16 @@ use extractor_eventing::{
 };
 use extractor_persistence::test_support::TestDatabase;
 use extractor_test_support::TemporaryBlobRoot;
+use extractor_test_support::capture::CaptureCommandJson;
 use ratatoskr_document_contracts::{
-    Document, DocumentAddress, DocumentBlock, DocumentProvenance, ExtractionStrategy,
+    ContentDocumentExtracted, Document, DocumentAddress, DocumentBlock, DocumentProvenance,
+    ExtractionStrategy,
 };
 use ratatoskr_event_envelope::EventEnvelope;
 use ratatoskr_identifiers::{
     BlobOwner, BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
 };
 use ratatoskr_operation_contracts::{OperationReported, OperationStatus};
-use serde_json::json;
 use sha2::{Digest as _, Sha256};
 use sqlx::Row as _;
 
@@ -25,17 +26,10 @@ const SUBJECT: &str = "cmd.content.capture.requested.v1";
 async fn completed_document_and_report_commit_with_one_run()
 -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
-    let operation_id = uuid::Uuid::now_v7();
-    let command = serde_json::to_vec(&json!({
-        "command_id": uuid::Uuid::now_v7(),
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-21T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-completed-once",
-        "payload": { "url": "https://example.test/article" }
-    }))?;
+    let capture = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-completed-once");
+    let operation_id = capture.operation_id;
+    let command = capture.to_bytes();
     consume_capture(database.database.pool(), SUBJECT, &command).await?;
     let (run_id, document_id): (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
         "update extractor.extraction_runs set status = 'running', started_at = now()
@@ -102,6 +96,85 @@ async fn completed_document_and_report_commit_with_one_run()
         &ir_blob,
     )
     .await?;
+
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn document_event_payload_is_the_contract_type() -> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let capture = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-contract-payload");
+    let command_id = capture.command_id;
+    let correlation = capture.correlation_id.clone();
+    let tenant = capture.tenant_user;
+    consume_capture(database.database.pool(), SUBJECT, &capture.to_bytes()).await?;
+    let (run_id, document_id): (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
+        "update extractor.extraction_runs set status = 'running', started_at = now()
+         returning run_id, document_id",
+    )
+    .fetch_one(database.database.pool())
+    .await?;
+    let source = blob_ref("text/html", 17, 'a')?;
+    let document = document(source.clone(), DocumentId(document_id))?;
+    let root = TemporaryBlobRoot::create().await?;
+    let store = BlobStore::new(root.path());
+    let ir_blob = store_document_ir(&store, &document).await?;
+    let fetch = CompletedFetch {
+        final_url: "https://example.test/article",
+        http_status: 200,
+        media_type: "text/html",
+        wire_bytes: 17,
+        decoded_bytes: 17,
+        attempts: 1,
+        cache_outcome: "fresh",
+        etag: None,
+        last_modified: None,
+        raw_blob: &source,
+    };
+    complete_document(
+        database.database.pool(),
+        run_id,
+        &document,
+        &ir_blob,
+        &fetch,
+        &candidate_decisions(),
+        &[],
+    )
+    .await?;
+
+    let payload: serde_json::Value = sqlx::query_scalar(
+        "select payload from extractor.outbox_events
+          where subject = 'evt.content.document.extracted.v1'",
+    )
+    .fetch_one(database.database.pool())
+    .await?;
+    let envelope: EventEnvelope = serde_json::from_value(payload)?;
+    let fact = envelope.payload_as::<ContentDocumentExtracted>()?;
+    fact.validate()?;
+    assert_eq!(fact.document, document);
+    assert_eq!(fact.document_blob, ir_blob);
+    assert_eq!(envelope.producer.as_str(), "ratatoskr-extractor");
+    assert_eq!(
+        envelope.aggregate_id.to_string(),
+        format!("document:{document_id}")
+    );
+    assert_eq!(
+        envelope
+            .tenant_id
+            .ok_or("the fact must carry its tenant")?
+            .to_string(),
+        format!("user:{tenant}")
+    );
+    assert_eq!(envelope.correlation_id.to_string(), correlation);
+    assert_eq!(
+        envelope
+            .causation_id
+            .ok_or("the fact must carry its causation")?
+            .to_string(),
+        format!("command:{command_id}")
+    );
 
     database.cleanup().await?;
     Ok(())
@@ -175,9 +248,9 @@ async fn verify_completion(
     let report_row = rows.last().ok_or("operation report is missing")?;
     let document_envelope: EventEnvelope =
         serde_json::from_value(document_row.try_get("payload")?)?;
-    let emitted: Document =
-        serde_json::from_value(serde_json::Value::Object(document_envelope.payload))?;
-    assert_eq!(&emitted, document);
+    let emitted = document_envelope.payload_as::<ContentDocumentExtracted>()?;
+    assert_eq!(&emitted.document, document);
+    assert_eq!(&emitted.document_blob, ir_blob);
     let report_envelope: EventEnvelope = serde_json::from_value(report_row.try_get("payload")?)?;
     let report = report_envelope.payload_as::<OperationReported>()?;
     assert_eq!(report.status, OperationStatus::Succeeded);

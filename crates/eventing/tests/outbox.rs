@@ -6,7 +6,7 @@ use extractor_eventing::{
     NatsPublisher, PublishError, Publisher, consume_capture, run_outbox_once,
 };
 use extractor_persistence::test_support::TestDatabase;
-use serde_json::json;
+use extractor_test_support::capture::CaptureCommandJson;
 
 struct RefusingPublisher;
 
@@ -27,17 +27,9 @@ impl Publisher for RefusingPublisher {
 async fn publisher_retries_without_marking_an_unacknowledged_message()
 -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
-    let operation_id = uuid::Uuid::now_v7();
-    let command = serde_json::to_vec(&json!({
-        "command_id": uuid::Uuid::now_v7(),
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-21T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-outbox-retry",
-        "payload": { "url": "https://example.test/article" }
-    }))?;
+    let command = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-outbox-retry")
+        .to_bytes();
     consume_capture(
         database.database.pool(),
         "cmd.content.capture.requested.v1",

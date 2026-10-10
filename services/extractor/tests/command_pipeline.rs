@@ -10,9 +10,9 @@ use extractor_eventing::{
 };
 use extractor_persistence::test_support::TestDatabase;
 use extractor_test_support::TemporaryBlobRoot;
+use extractor_test_support::capture::CaptureCommandJson;
 use futures_util::stream;
 use ratatoskr_document_contracts::DocumentAddress;
-use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
@@ -24,19 +24,11 @@ async fn completed_html_persists_all_candidate_decisions_atomically()
     let publisher = NatsPublisher::connect(&nats_url()).await?;
     publisher.ensure_command_stream().await?;
     publisher.ensure_event_stream().await?;
-    let operation_id = uuid::Uuid::now_v7();
-    let command_id = uuid::Uuid::now_v7();
+    let document = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-vertical");
+    let command_id = document.command_id;
     let durable = format!("extractor_test_{}", uuid::Uuid::now_v7().simple());
-    let command = serde_json::to_vec(&json!({
-        "command_id": command_id,
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-21T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-vertical",
-        "payload": { "url": "https://example.test/article" }
-    }))?;
+    let command = document.to_bytes();
     for delivery in ["first", "redelivery"] {
         publisher
             .publish(
@@ -52,7 +44,7 @@ async fn completed_html_persists_all_candidate_decisions_atomically()
         let pool = database.database.pool().clone();
         let durable = durable.clone();
         let cancellation = cancellation.clone();
-        async move { run_command_consumer(&publisher, &pool, &durable, cancellation).await }
+        async move { run_command_consumer(&publisher, &pool, &durable, true, cancellation).await }
     });
     wait_for_run(database.database.pool()).await?;
     cancellation.cancel();
@@ -168,18 +160,10 @@ async fn quality_rejection_persists_evidence_without_document_event()
     let database = TestDatabase::create().await?;
     let root = TemporaryBlobRoot::create().await?;
     let store = BlobStore::new(root.path());
-    let operation_id = uuid::Uuid::now_v7();
-    let command_id = uuid::Uuid::now_v7();
-    let command = serde_json::to_vec(&json!({
-        "command_id": command_id,
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-21T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-low-quality",
-        "payload": { "url": "https://example.test/login" }
-    }))?;
+    let document = CaptureCommandJson::url("https://example.test/login")
+        .with_idempotency("capture-low-quality");
+    let operation_id = document.operation_id;
+    let command = document.to_bytes();
     consume_capture(
         database.database.pool(),
         "cmd.content.capture.requested.v1",

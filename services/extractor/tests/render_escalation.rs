@@ -3,7 +3,7 @@
 use async_nats::jetstream;
 use extractor_blob_store::BlobStore;
 use extractor_core::ExtractorConfig;
-use extractor_eventing::{QueuedRun, claim_queued_run};
+use extractor_eventing::{QueuedRun, RenderBus, claim_queued_run};
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
 use extractor_test_support::TemporaryBlobRoot;
@@ -58,7 +58,7 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
     let store = BlobStore::new(root.path());
     let pool = database.database.pool();
     let nats_client = async_nats::connect(&nats_url()).await?;
-    let bus = jetstream::new(nats_client.clone());
+    let bus = RenderBus::new(jetstream::new(nats_client.clone()), true);
 
     let mut config = ExtractorConfig::built_in(root.path());
     config.fetch.allowed_ports = vec![80, 443, server.port()];
@@ -87,6 +87,8 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
         durable_name: format!("test_worker_{}", uuid::Uuid::now_v7().simple()),
         completions_bucket: format!("completions_{}", uuid::Uuid::now_v7().simple()),
         max_jobs_per_process: u32::MAX,
+        nkey_seed_path: None,
+        provision_topology: true,
     };
     let events_publisher = extractor_eventing::NatsPublisher::connect(&nats_url()).await?;
     events_publisher.ensure_event_stream().await?;
@@ -176,7 +178,7 @@ async fn host_outside_the_allowlist_denies_without_rendering()
     let store = BlobStore::new(root.path());
     let pool = database.database.pool();
     let nats_client = async_nats::connect(&nats_url()).await?;
-    let bus = jetstream::new(nats_client.clone());
+    let bus = RenderBus::new(jetstream::new(nats_client.clone()), true);
 
     let mut config = ExtractorConfig::built_in(root.path());
     config.fetch.allowed_ports = vec![80, 443, server.port()];
@@ -262,7 +264,7 @@ async fn exhausted_daily_budget_denies_without_rendering() -> Result<(), Box<dyn
     let store = BlobStore::new(root.path());
     let pool = database.database.pool();
     let nats_client = async_nats::connect(&nats_url()).await?;
-    let bus = jetstream::new(nats_client.clone());
+    let bus = RenderBus::new(jetstream::new(nats_client.clone()), true);
 
     sqlx::query(
         "insert into extractor.render_budgets (utc_day, escalated) values (current_date, 7)",
@@ -350,12 +352,13 @@ async fn process_run(
     fetcher: &SafeFetcher,
     store: &BlobStore,
     config: &ExtractorConfig,
-    bus: &async_nats::jetstream::Context,
+    bus: &RenderBus,
     run: &QueuedRun,
 ) -> Result<(), Box<dyn std::error::Error>> {
     extractor_service::process_run(
         pool,
         fetcher,
+        store,
         store,
         &config.parser,
         &config.pdf,

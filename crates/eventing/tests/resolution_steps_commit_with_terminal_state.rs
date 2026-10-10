@@ -2,7 +2,7 @@
 
 use extractor_eventing::{Completion, ResolutionStep, claim_queued_run, consume_capture, fail_run};
 use extractor_persistence::test_support::TestDatabase;
-use serde_json::json;
+use extractor_test_support::capture::CaptureCommandJson;
 use sqlx::Row as _;
 
 const SUBJECT: &str = "cmd.content.capture.requested.v1";
@@ -14,17 +14,9 @@ const SUBJECT: &str = "cmd.content.capture.requested.v1";
 )]
 async fn resolution_steps_commit_with_terminal_state() -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
-    let operation_id = uuid::Uuid::now_v7();
-    let command = serde_json::to_vec(&json!({
-        "command_id": uuid::Uuid::now_v7(),
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-21T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-resolution-steps-commit",
-        "payload": { "url": "https://example.test/article" }
-    }))?;
+    let document = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-resolution-steps-commit");
+    let command = document.to_bytes();
     consume_capture(database.database.pool(), SUBJECT, &command).await?;
     let claimed = claim_queued_run(database.database.pool(), "test-worker", 60).await?;
     let run_id = claimed.expect("queued run must exist").run_id;

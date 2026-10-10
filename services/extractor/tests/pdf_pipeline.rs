@@ -4,17 +4,17 @@ use async_nats::jetstream;
 use extractor_blob_store::BlobStore;
 use extractor_core::ExtractorConfig;
 use extractor_eventing::{
-    CompletedFetch, QueuedRun, claim_queued_run, complete_document, consume_capture,
+    CompletedFetch, QueuedRun, RenderBus, claim_queued_run, complete_document, consume_capture,
     reject_quality, store_document_ir,
 };
 use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
+use extractor_test_support::capture::CaptureCommandJson;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
 use futures_util::stream;
 use ratatoskr_document_contracts::DocumentAddress;
 use ratatoskr_identifiers::DocumentId;
-use serde_json::json;
 
 const TEXT_PDF: &[u8] = include_bytes!("../../../crates/pdf/tests/fixtures/text-two-pages.pdf");
 const ENCRYPTED_PDF: &[u8] =
@@ -429,7 +429,7 @@ async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std
         &fetcher,
         &store,
         &config,
-        &jetstream::new(nats_client),
+        &RenderBus::new(jetstream::new(nats_client), true),
         &run,
     )
     .await?;
@@ -501,7 +501,7 @@ async fn pdf_failure_classes_reach_terminal_state() -> Result<(), Box<dyn std::e
             &fetcher,
             &store,
             &config,
-            &jetstream::new(nats_client),
+            &RenderBus::new(jetstream::new(nats_client), true),
             &run,
         )
         .await?;
@@ -531,12 +531,13 @@ async fn process_pdf_run(
     fetcher: &SafeFetcher,
     store: &BlobStore,
     config: &ExtractorConfig,
-    bus: &async_nats::jetstream::Context,
+    bus: &RenderBus,
     run: &QueuedRun,
 ) -> Result<(), Box<dyn std::error::Error>> {
     extractor_service::process_run(
         pool,
         fetcher,
+        store,
         store,
         &config.parser,
         &config.pdf,
@@ -608,17 +609,9 @@ async fn queue_direct(
 }
 
 fn capture_command(command_id: uuid::Uuid, url: &str) -> serde_json::Value {
-    let operation_id = uuid::Uuid::now_v7();
-    json!({
-        "command_id": command_id,
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-22T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-pdf",
-        "payload": { "url": url }
-    })
+    let mut document = CaptureCommandJson::url(url).with_idempotency("capture-pdf");
+    document.command_id = command_id;
+    document.to_value()
 }
 
 fn pdf_fetch<'a>(

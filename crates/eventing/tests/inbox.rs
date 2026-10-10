@@ -2,7 +2,7 @@
 
 use extractor_eventing::{Reception, consume_capture};
 use extractor_persistence::test_support::TestDatabase;
-use serde_json::json;
+use extractor_test_support::capture::CaptureCommandJson;
 
 const SUBJECT: &str = "cmd.content.capture.requested.v1";
 
@@ -10,17 +10,9 @@ const SUBJECT: &str = "cmd.content.capture.requested.v1";
 async fn one_command_creates_one_queued_run_under_redelivery()
 -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
-    let operation_id = uuid::Uuid::now_v7();
-    let command = serde_json::to_vec(&json!({
-        "command_id": uuid::Uuid::now_v7(),
-        "command_type": "content.capture.requested.v1",
-        "requested_at": "2026-08-21T10:00:00Z",
-        "operation_id": operation_id,
-        "tenant_id": format!("user:{}", uuid::Uuid::now_v7()),
-        "correlation_id": format!("operation:{operation_id}"),
-        "idempotency_key": "capture-queued-once",
-        "payload": { "url": "https://example.test/article?utm_source=noise" }
-    }))?;
+    let command = CaptureCommandJson::url("https://example.test/article?utm_source=noise")
+        .with_idempotency("capture-queued-once")
+        .to_bytes();
 
     assert_eq!(
         consume_capture(database.database.pool(), SUBJECT, &command).await?,

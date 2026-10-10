@@ -2,6 +2,9 @@
 
 //! Deterministic local fixtures for Ratatoskr Extractor tests.
 
+pub mod broker;
+pub mod capture;
+
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -26,7 +26,7 @@ async fn main() {
         }
     };
     let cancellation = tokio_util::sync::CancellationToken::new();
-    let client = match async_nats::connect(&settings.nats_url).await {
+    let client = match browser_worker::connect(&settings).await {
         Ok(client) => client,
         Err(error) => {
             eprintln!("NATS connection failed: {error}");

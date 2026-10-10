@@ -6,15 +6,14 @@ use extractor_document_ir::{
     DocumentIrError, HtmlDocumentInput, HtmlExtraction, ParseLimits, from_html,
 };
 use extractor_eventing::{
-    CompletedFetch, RenderOutcome, RenderRequestError, ResolutionStep, complete_document, fail_run,
-    record_fetch, reject_quality, store_document_ir,
+    CompletedFetch, RenderBus, RenderOutcome, RenderRequestError, ResolutionStep,
+    complete_document, fail_run, record_fetch, reject_quality, store_document_ir,
 };
 
 use crate::escalation::{self, EscalationDecision};
 use crate::provider_continuation::{
     fallback_to_generic_html, points_back_to_source, resolve_external_article,
 };
-use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_providers::{
     ProviderError, ProviderInput, ProviderLimits, SourceRoute, from_provider, provider_request,
 };
@@ -22,6 +21,7 @@ use extractor_safe_fetch::{CacheOutcome, FetchRequest, FetchResult, SafeFetcher}
 use extractor_youtube::resolve_identity;
 use ratatoskr_document_contracts::DocumentAddress;
 
+use crate::pdf_run::{complete_blob_pdf, complete_pdf};
 use crate::youtube_pipeline::complete_youtube;
 
 /// Why the process or one pipeline step failed.
@@ -45,6 +45,9 @@ pub enum ProcessError {
     /// Event bus initialization failed.
     #[error("event bus initialization failed")]
     Bus(#[from] extractor_eventing::PublishError),
+    /// Edge has not provisioned a durable this process needs.
+    #[error("{0}")]
+    Topology(#[from] extractor_eventing::TopologyError),
     /// Event pipeline failed.
     #[error("event pipeline failed")]
     Eventing(#[from] extractor_eventing::ConsumeError),
@@ -76,14 +79,20 @@ pub async fn process_run(
     pool: &sqlx::PgPool,
     retriever: &SafeFetcher,
     store: &BlobStore,
+    telegram: &BlobStore,
     parser: &ParserConfig,
     pdf: &PdfConfig,
     providers: &ProvidersConfig,
     render: &RenderConfig,
     youtube: &YoutubeConfig,
-    bus: &async_nats::jetstream::Context,
+    bus: &RenderBus,
     run: &extractor_eventing::QueuedRun,
 ) -> Result<(), ProcessError> {
+    // A blob capture reads peer-owned bytes and never touches the network, so it branches before
+    // any URL classification.
+    if let Some(blob) = &run.blob {
+        return complete_blob_pdf(pool, store, telegram, pdf, run, blob).await;
+    }
     // Provider routing happens before any fetch so a mapped provider run performs exactly one
     // network operation against its native representation; unmappable URLs fall through to the
     // ordinary path with the original URL. YouTube routes resolve a video identity first; a URL
@@ -137,7 +146,7 @@ async fn complete_html(
     store: &BlobStore,
     parser: &ParserConfig,
     render: &RenderConfig,
-    bus: &async_nats::jetstream::Context,
+    bus: &RenderBus,
     run: &extractor_eventing::QueuedRun,
     fetched: FetchResult,
 ) -> Result<(), ProcessError> {
@@ -224,96 +233,6 @@ async fn complete_html(
         }
         Err(error) => {
             tracing::warn!(run_id = %run.run_id, error = %error, "Document IR conversion failed");
-            fail_run(pool, run.run_id, "parse", false, &[]).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-    };
-    let ir_blob = store_document_ir(store, &extraction.document).await?;
-    let fetch = completed_fetch(&fetched);
-    complete_document(
-        pool,
-        run.run_id,
-        &extraction.document,
-        &ir_blob,
-        &fetch,
-        &extraction.candidates,
-        &[],
-    )
-    .await?;
-    metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "succeeded").increment(1);
-    Ok(())
-}
-
-/// Completes one run whose verified bytes are a PDF document.
-async fn complete_pdf(
-    pool: &sqlx::PgPool,
-    store: &BlobStore,
-    pdf: &PdfConfig,
-    run: &extractor_eventing::QueuedRun,
-    fetched: FetchResult,
-) -> Result<(), ProcessError> {
-    let source_path = match store.verify(&fetched.artifact).await {
-        Ok(path) => path,
-        Err(error) => {
-            tracing::warn!(run_id = %run.run_id, error = %error, "raw artifact verification failed");
-            fail_run(pool, run.run_id, "artifact", false, &[]).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-    };
-    let bytes = tokio::fs::read(source_path).await?;
-    let address = DocumentAddress::parse(fetched.final_url.as_str())
-        .map_err(|_| ProcessError::DocumentIdentity)?;
-    let raw = fetched.artifact.clone();
-    let limits = PdfParseLimits {
-        max_input_bytes: pdf.max_input_bytes,
-        max_pages: pdf.max_pages,
-        max_text_bytes: pdf.max_text_bytes,
-    };
-    let document_id = run.document_id;
-    let parse_started = std::time::Instant::now();
-    // The PDF parser panics on hostile input; `from_pdf` contains that at its own boundary, and
-    // this join converts any escaped panic into the typed process failure.
-    let parsed = tokio::task::spawn_blocking(move || {
-        from_pdf(
-            PdfDocumentInput {
-                document_id,
-                source_address: address,
-                source_blob: raw,
-                bytes: &bytes,
-            },
-            limits,
-        )
-    })
-    .await?;
-    metrics::histogram!("ratatoskr_extractor_parse_duration_seconds")
-        .record(parse_started.elapsed().as_secs_f64());
-    let extraction = match parsed {
-        Ok(extraction) => extraction,
-        Err(PdfError::NoTextLayer { candidates }) => {
-            tracing::info!(run_id = %run.run_id, "PDF has no text layer; recording degraded outcome");
-            let fetch = completed_fetch(&fetched);
-            reject_quality(
-                pool,
-                run.run_id,
-                &fetch,
-                &candidates,
-                "pdf_no_text_layer",
-                &[],
-            )
-            .await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-        Err(PdfError::Encrypted) => {
-            tracing::info!(run_id = %run.run_id, "PDF requires a password");
-            fail_run(pool, run.run_id, "pdf_encrypted", false, &[]).await?;
-            metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
-            return Ok(());
-        }
-        Err(error) => {
-            tracing::warn!(run_id = %run.run_id, error = %error, "PDF extraction failed");
             fail_run(pool, run.run_id, "parse", false, &[]).await?;
             metrics::counter!("ratatoskr_extractor_runs_total", "outcome" => "failed").increment(1);
             return Ok(());
@@ -563,7 +482,7 @@ async fn spend_budget_and_escalate(
     store: &BlobStore,
     parser: &ParserConfig,
     render: &RenderConfig,
-    bus: &async_nats::jetstream::Context,
+    bus: &RenderBus,
     run: &extractor_eventing::QueuedRun,
     fetched: &FetchResult,
 ) -> Result<EscalationStep, ProcessError> {
@@ -643,7 +562,7 @@ async fn record_policy_denial(
 async fn escalate_to_render(
     pool: &sqlx::PgPool,
     render: &RenderConfig,
-    bus: &async_nats::jetstream::Context,
+    bus: &RenderBus,
     parser: &ParserConfig,
     run: &extractor_eventing::QueuedRun,
     fetched: &FetchResult,
