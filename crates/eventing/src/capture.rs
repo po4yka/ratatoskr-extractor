@@ -320,7 +320,8 @@ async fn blob_source(
              (source_id, owner_id, original_url, normalized_url, canonical_url, host,
               classification, created_at, source_kind, blob_owner, blob_digest_hex,
               blob_media_type, blob_length_bytes)
-         values ($1, $2, $3, $3, $3, $4, 'blob', transaction_timestamp(), 'blob', $4, $5, $6, $7)
+         values ($1, $2, $3, $3, $3, 'ratatoskr-telegram', 'blob', transaction_timestamp(), 'blob',
+                 $4, $5, $6, $7)
          on conflict (owner_id, normalized_url) do update
              set canonical_url = excluded.canonical_url
          returning source_id",
