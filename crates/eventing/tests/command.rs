@@ -148,6 +148,32 @@ async fn a_blob_capture_queues_a_blob_run() -> Result<(), Box<dyn std::error::Er
 }
 
 #[tokio::test]
+async fn a_blob_source_host_is_the_fixed_telegram_literal_whatever_the_owner()
+-> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let foreign =
+        CaptureCommandJson::blob("ratatoskr-knowledge", PDF_DIGEST, "application/pdf", 13_264);
+
+    consume_capture(database.database.pool(), SUBJECT, &foreign.to_bytes()).await?;
+
+    let (host, owner): (String, String) =
+        sqlx::query_as("select host, blob_owner from extractor.sources")
+            .fetch_one(database.database.pool())
+            .await?;
+    assert_eq!(
+        owner, "ratatoskr-knowledge",
+        "the owner column records the reference"
+    );
+    assert_eq!(
+        host, "ratatoskr-telegram",
+        "S11 fixes the host of every blob source"
+    );
+
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_second_identical_blob_by_the_same_owner_reuses_the_source()
 -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
