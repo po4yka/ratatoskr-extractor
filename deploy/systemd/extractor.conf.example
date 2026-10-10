@@ -1,5 +1,7 @@
-RATATOSKR__ADMIN__BIND=0.0.0.0:9467
+RATATOSKR__ADMIN__BIND=127.0.0.1:9088
 RATATOSKR__BLOBS__ROOT=/mnt/nvme/ratatoskr/blobs/ratatoskr-extractor
+# Read-only root of the Telegram service's blobs, for blob captures.
+RATATOSKR__BLOBS__TELEGRAM_ROOT=/mnt/nvme/ratatoskr/blobs/ratatoskr-telegram
 RATATOSKR__DATABASE__URL=postgresql://ratatoskr_extractor:REPLACE_ME@127.0.0.1:5432/ratatoskr
 RATATOSKR__DATABASE__MAX_CONNECTIONS=10
 RATATOSKR__BUS__URL=nats://127.0.0.1:4222

@@ -9,6 +9,9 @@ use tracing_subscriber::EnvFilter;
 
 const ENV_PREFIX: &str = "RATATOSKR__";
 
+/// The capture durable Edge provisions for the extractor (XR-021 CONTRACTS.md S04).
+const FIXED_CAPTURE_DURABLE: &str = "ratatoskr_extractor_capture";
+
 /// All validated process configuration.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,6 +56,8 @@ pub struct AdminConfig {
 pub struct BlobConfig {
     /// Absolute content-addressed storage root.
     pub root: PathBuf,
+    /// Absolute root of the Telegram service's blobs, read but never written.
+    pub telegram_root: PathBuf,
 }
 
 /// Extractor-owned `PostgreSQL` pool configuration.
@@ -84,6 +89,8 @@ pub struct BusConfig {
     pub outbox_batch_size: i64,
     /// Work lease, longer than the network deadline.
     pub worker_lease_seconds: i32,
+    /// Creates streams and the capture durable; for an unauthenticated development broker only.
+    pub provision_topology: bool,
 }
 
 /// Parse-once resource ceilings.
@@ -274,10 +281,11 @@ impl ExtractorConfig {
     pub fn built_in(blob_root: &Path) -> Self {
         Self {
             admin: AdminConfig {
-                bind: SocketAddr::from(([127, 0, 0, 1], 9467)),
+                bind: SocketAddr::from(([127, 0, 0, 1], 9088)),
             },
             blobs: BlobConfig {
                 root: blob_root.to_path_buf(),
+                telegram_root: PathBuf::from("/mnt/nvme/ratatoskr/blobs/ratatoskr-telegram"),
             },
             database: DatabaseConfig {
                 url: secrecy::SecretString::from(String::new()),
@@ -291,6 +299,7 @@ impl ExtractorConfig {
                 poll_interval_ms: 100,
                 outbox_batch_size: 32,
                 worker_lease_seconds: 60,
+                provision_topology: false,
             },
             fetch: FetchConfig {
                 max_url_length: 8_192,
@@ -417,12 +426,17 @@ fn validate(config: &ExtractorConfig) -> Vec<ConfigViolation> {
         "must use a non-zero port",
         &mut violations,
     );
-    require(
-        config.blobs.root.is_absolute(),
-        "blobs.root",
-        "must be an absolute path",
-        &mut violations,
-    );
+    for (path, key) in [
+        (&config.blobs.root, "blobs.root"),
+        (&config.blobs.telegram_root, "blobs.telegram_root"),
+    ] {
+        require(
+            path.is_absolute(),
+            key,
+            "must be an absolute path",
+            &mut violations,
+        );
+    }
     validate_database(&config.database, &mut violations);
     validate_bus(&config.bus, config.fetch.total_timeout_ms, &mut violations);
     validate_fetch(&config.fetch, &mut violations);
@@ -504,6 +518,18 @@ fn validate_bus(config: &BusConfig, fetch_timeout_ms: u64, violations: &mut Vec<
         !config.durable_name.is_empty() && config.durable_name.len() <= 64,
         "bus.durable_name",
         "must contain 1 to 64 bytes",
+        violations,
+    );
+    require(
+        !(config.provision_topology && config.nkey_seed_path.is_some()),
+        "bus.provision_topology",
+        "must not be enabled together with bus.nkey_seed_path",
+        violations,
+    );
+    require(
+        config.provision_topology || config.durable_name == FIXED_CAPTURE_DURABLE,
+        "bus.durable_name",
+        "must be the Edge-provisioned durable unless bus.provision_topology is enabled",
         violations,
     );
     for (valid, key) in [

@@ -43,6 +43,7 @@ async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error
         .env("RATATOSKR__DATABASE__URL", &database_url)
         .env("RATATOSKR__BUS__URL", &bus_url)
         .env("RATATOSKR__BUS__DURABLE_NAME", &durable)
+        .env("RATATOSKR__BUS__PROVISION_TOPOLOGY", "true")
         .env("RATATOSKR__ADMIN__BIND", address.to_string())
         .output()?;
     assert!(check.status.success());
@@ -53,6 +54,7 @@ async fn configured_process_serves_admin_only() -> Result<(), Box<dyn std::error
         .env("RATATOSKR__DATABASE__URL", &database_url)
         .env("RATATOSKR__BUS__URL", &bus_url)
         .env("RATATOSKR__BUS__DURABLE_NAME", &durable)
+        .env("RATATOSKR__BUS__PROVISION_TOPOLOGY", "true")
         .env("RATATOSKR__ADMIN__BIND", address.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())

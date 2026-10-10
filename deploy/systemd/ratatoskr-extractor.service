@@ -48,8 +48,9 @@ SystemCallErrorNumber=EPERM
 CapabilityBoundingSet=
 AmbientCapabilities=
 UMask=0077
+SupplementaryGroups=ratatoskr-telegram-blobs
 ReadWritePaths=/mnt/nvme/ratatoskr/blobs/ratatoskr-extractor
-ReadOnlyPaths=/etc/ratatoskr/extractor.nkey
+ReadOnlyPaths=/etc/ratatoskr/extractor.nkey /mnt/nvme/ratatoskr/blobs/ratatoskr-telegram
 
 [Install]
 WantedBy=multi-user.target

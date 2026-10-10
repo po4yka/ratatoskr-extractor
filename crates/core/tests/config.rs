@@ -347,3 +347,129 @@ fn invalid_youtube_settings_are_reported_without_their_values()
     );
     Ok(())
 }
+
+const TEST_DATABASE_URL: &str = "postgres://extractor:extractor@127.0.0.1:5434/extractor";
+
+fn base_figment() -> Figment {
+    Figment::from(Serialized::defaults(ExtractorConfig::built_in(Path::new(
+        "/var/lib/ratatoskr-extractor/blobs",
+    ))))
+    .merge(("database.url", TEST_DATABASE_URL))
+}
+
+/// Loads `base_figment` with `overrides` and returns the startup report of the rejection.
+fn rejection_report(
+    overrides: &[(&str, serde_json::Value)],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut figment = base_figment();
+    for (key, value) in overrides {
+        figment = figment.merge((*key, value.clone()));
+    }
+    match load_from(&figment) {
+        Ok(_) => Err("the configuration must be rejected".into()),
+        Err(error @ ConfigError::Invalid(_)) => Ok(error.report()),
+        Err(error) => Err(Box::new(error)),
+    }
+}
+
+#[test]
+fn telegram_root_defaults_to_the_durable_layout_and_must_be_absolute()
+-> Result<(), Box<dyn std::error::Error>> {
+    let built_in = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert_eq!(
+        built_in.blobs.telegram_root,
+        Path::new("/mnt/nvme/ratatoskr/blobs/ratatoskr-telegram")
+    );
+    let loaded = load_from(&base_figment())?;
+    assert_eq!(
+        loaded.blobs.telegram_root,
+        Path::new("/mnt/nvme/ratatoskr/blobs/ratatoskr-telegram")
+    );
+    let overridden = load_from(&base_figment().merge(("blobs.telegram_root", "/srv/telegram")))?;
+    assert_eq!(overridden.blobs.telegram_root, Path::new("/srv/telegram"));
+
+    let report = rejection_report(&[("blobs.telegram_root", json!("relative"))])?;
+    assert!(report.contains("blobs.telegram_root"), "{report}");
+    assert!(
+        report.contains("RATATOSKR__BLOBS__TELEGRAM_ROOT"),
+        "{report}"
+    );
+    assert!(report.contains("must be an absolute path"), "{report}");
+    assert!(!report.contains("relative"), "the value leaked:\n{report}");
+    Ok(())
+}
+
+#[test]
+fn provision_topology_defaults_off() -> Result<(), Box<dyn std::error::Error>> {
+    let built_in = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert!(
+        !built_in.bus.provision_topology,
+        "a production process must never create topology by default"
+    );
+    assert!(!load_from(&base_figment())?.bus.provision_topology);
+    assert!(
+        load_from(&base_figment().merge(("bus.provision_topology", true)))?
+            .bus
+            .provision_topology
+    );
+    Ok(())
+}
+
+#[test]
+fn provision_topology_true_with_nkey_seed_is_refused() -> Result<(), Box<dyn std::error::Error>> {
+    let report = rejection_report(&[
+        ("bus.provision_topology", json!(true)),
+        ("bus.nkey_seed_path", json!("/etc/ratatoskr/extractor.nkey")),
+    ])?;
+    assert!(report.contains("bus.provision_topology"), "{report}");
+    assert!(
+        report.contains("RATATOSKR__BUS__PROVISION_TOPOLOGY"),
+        "{report}"
+    );
+    Ok(())
+}
+
+#[test]
+fn durable_name_other_than_ratatoskr_extractor_capture_is_refused_when_not_provisioning()
+-> Result<(), Box<dyn std::error::Error>> {
+    let report = rejection_report(&[("bus.durable_name", json!("some_other_durable"))])?;
+    assert!(report.contains("bus.durable_name"), "{report}");
+    assert!(
+        !report.contains("some_other_durable"),
+        "the value leaked:\n{report}"
+    );
+    assert!(
+        load_from(&base_figment().merge(("bus.durable_name", "ratatoskr_extractor_capture")))
+            .is_ok()
+    );
+    Ok(())
+}
+
+#[test]
+fn durable_name_is_free_when_provisioning() -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_from(
+        &base_figment()
+            .merge(("bus.provision_topology", true))
+            .merge(("bus.durable_name", "extractor_test_0123456789abcdef")),
+    )?;
+    assert_eq!(config.bus.durable_name, "extractor_test_0123456789abcdef");
+    Ok(())
+}
+
+#[test]
+fn admin_default_is_the_allocated_operator_port() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert_eq!(config.admin.bind, "127.0.0.1:9088".parse()?);
+
+    let example = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/systemd/extractor.conf.example"
+    ))?;
+    assert!(
+        example
+            .lines()
+            .any(|line| line == "RATATOSKR__ADMIN__BIND=127.0.0.1:9088"),
+        "the shipped example must bind the allocated operator port"
+    );
+    Ok(())
+}
