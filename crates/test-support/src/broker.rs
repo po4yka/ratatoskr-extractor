@@ -135,6 +135,17 @@ impl AuthorizedBroker {
     /// Returns [`BrokerError`] when the executable, port, or files are unavailable or the broker
     /// does not become ready.
     pub async fn start(users: &str) -> Result<Self, BrokerError> {
+        Self::start_with(users, "").await
+    }
+
+    /// Like [`Self::start`], with `extra` appended as top-level server configuration, for example
+    /// `max_payload: 65536`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrokerError`] when the executable, port, or files are unavailable or the broker
+    /// does not become ready.
+    pub async fn start_with(users: &str, extra: &str) -> Result<Self, BrokerError> {
         let _startup = START.lock().await;
         let directory = std::env::temp_dir().join(format!(
             "ratatoskr-extractor-broker-{}",
@@ -144,7 +155,7 @@ impl AuthorizedBroker {
         let port = free_port()?;
         let admin_password = uuid::Uuid::now_v7().simple().to_string();
         let configuration = format!(
-            "port: {port}\nhost: 127.0.0.1\njetstream {{\n  store_dir: \"{store}\"\n}}\n\
+            "port: {port}\nhost: 127.0.0.1\n{extra}\njetstream {{\n  store_dir: \"{store}\"\n}}\n\
              authorization {{\n  users: [\n    {{ user: \"{admin}\", password: \"{admin_password}\", \
              permissions: {{ publish: \">\", subscribe: \">\" }} }}\n{users}\n  ]\n}}\n",
             store = directory.join("jetstream").display(),

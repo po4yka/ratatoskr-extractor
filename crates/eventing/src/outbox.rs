@@ -9,18 +9,56 @@ use sqlx::{PgPool, Row as _};
 const EVENT_STREAM: &str = "ratatoskr_events";
 const COMMAND_STREAM: &str = "ratatoskr_commands";
 
-/// A bus publication failure.
+/// Headroom kept under the server's `max_payload` for the subject and headers.
+const PAYLOAD_HEADROOM_BYTES: usize = 1024;
+
+/// A bus publication failure, classed so the outbox knows whether a retry can ever help.
 #[derive(Debug, thiserror::Error)]
-#[error("the message was not acknowledged by the bus")]
-pub struct PublishError(#[source] Box<dyn std::error::Error + Send + Sync>);
+#[non_exhaustive]
+pub enum PublishError {
+    /// The broker was unreachable, refused the request, or did not acknowledge it in time. A
+    /// publish without an acknowledgement is indistinguishable from a permission denial, so the
+    /// message tells the operator where the difference shows.
+    #[error(
+        "the message was not acknowledged by the bus; check the NATS server log for a Publish Violation"
+    )]
+    Transient(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// The serialized message exceeds what the connected server accepts, so no retry can succeed.
+    #[error("the message is larger than the bus accepts")]
+    TooLarge,
+}
 
 impl PublishError {
     /// Wraps one transport failure without exposing it as a public response.
     #[must_use]
     pub fn new(error: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self(Box::new(error))
+        Self::Transient(Box::new(error))
+    }
+
+    /// The class of a message that is larger than the connected server's limit.
+    #[must_use]
+    pub const fn too_large() -> Self {
+        Self::TooLarge
+    }
+
+    /// `true` when retrying the same message can never succeed.
+    #[must_use]
+    pub const fn is_permanent(&self) -> bool {
+        matches!(self, Self::TooLarge)
+    }
+
+    /// A fixed, content-free class for the row's `last_error`, logs and metric labels.
+    #[must_use]
+    pub const fn class(&self) -> &'static str {
+        match self {
+            Self::Transient(_) => "publish_failed",
+            Self::TooLarge => PAYLOAD_TOO_LARGE,
+        }
     }
 }
+
+const PAYLOAD_TOO_LARGE: &str = "payload_too_large";
+const PAYLOAD_UNSERIALIZABLE: &str = "payload_unserializable";
 
 /// A publisher that confirms durable broker responsibility.
 pub trait Publisher: Send + Sync {
@@ -155,6 +193,16 @@ impl Publisher for NatsPublisher {
         payload: &[u8],
         message_id: &str,
     ) -> Result<(), PublishError> {
+        // The server refuses a larger message with no useful reply; classing it here keeps the
+        // outbox from retrying a row that can never be delivered.
+        let limit = self
+            .client
+            .server_info()
+            .max_payload
+            .saturating_sub(PAYLOAD_HEADROOM_BYTES);
+        if payload.len() > limit {
+            return Err(PublishError::too_large());
+        }
         let mut headers = async_nats::HeaderMap::new();
         headers.insert("Nats-Msg-Id", message_id);
         let acknowledgement = self
@@ -174,13 +222,17 @@ pub struct OutboxReport {
     pub claimed: usize,
     /// Rows acknowledged by `JetStream`.
     pub published: usize,
-    /// Rows backed off after failure.
+    /// Rows backed off after a transient failure; they are retried without limit.
     pub failed: usize,
-    /// Rows that exhausted the retry ceiling.
+    /// Rows marked undeliverable after a permanent failure, such as a message larger than the
+    /// server accepts. No transient failure ever counts here.
     pub dead_lettered: usize,
 }
 
 /// Claims and attempts one finite batch.
+///
+/// A transient failure backs the row off and never gives up on it; only a permanent failure marks
+/// a row undeliverable, and the pass continues with the next row either way.
 ///
 /// # Errors
 ///
@@ -220,15 +272,10 @@ pub async fn run_outbox_once<P: Publisher>(
         let message_id: uuid::Uuid = row.try_get("message_id")?;
         let subject: String = row.try_get("subject")?;
         let payload: serde_json::Value = row.try_get("payload")?;
-        let body = match serde_json::to_vec(&payload) {
-            Ok(body) => body,
-            Err(error) => {
-                report.failed += 1;
-                if mark_failed(pool, outbox_id, &error.to_string()).await? {
-                    report.dead_lettered += 1;
-                }
-                continue;
-            }
+        let Ok(body) = serde_json::to_vec(&payload) else {
+            mark_undeliverable(pool, outbox_id, PAYLOAD_UNSERIALIZABLE).await?;
+            report.dead_lettered += 1;
+            continue;
         };
         match publisher
             .publish(&subject, &body, &message_id.to_string())
@@ -247,43 +294,64 @@ pub async fn run_outbox_once<P: Publisher>(
                 report.published += 1;
                 metrics::counter!("ratatoskr_extractor_outbox_publications_total", "outcome" => "published").increment(1);
             }
+            Err(error) if error.is_permanent() => {
+                mark_undeliverable(pool, outbox_id, error.class()).await?;
+                report.dead_lettered += 1;
+            }
             Err(error) => {
+                tracing::warn!(class = error.class(), %error, "outbox publish failed; retrying with backoff");
+                mark_transient(pool, outbox_id, error.class()).await?;
                 report.failed += 1;
                 metrics::counter!("ratatoskr_extractor_outbox_publications_total", "outcome" => "failed").increment(1);
-                if mark_failed(pool, outbox_id, &error.to_string()).await? {
-                    report.dead_lettered += 1;
-                    metrics::counter!("ratatoskr_extractor_outbox_publications_total", "outcome" => "dead_lettered").increment(1);
-                }
             }
         }
     }
     Ok(report)
 }
 
-async fn mark_failed(
+/// Records one failed attempt and the capped backoff. The row is never given up on.
+async fn mark_transient(
     pool: &PgPool,
     outbox_id: uuid::Uuid,
-    error: &str,
-) -> Result<bool, sqlx::Error> {
-    let safe_error: String = error
-        .chars()
-        .filter(|character| !matches!(character, '\r' | '\n'))
-        .take(512)
-        .collect();
-    sqlx::query_scalar(
+    class: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
         "update extractor.outbox_events
             set attempts = attempts + 1, last_error = $2,
                 claimed_until = null, claimed_by = null,
                 next_attempt_at = clock_timestamp()
-                    + make_interval(secs => least(300.0, power(2.0, least(attempts, 20)))),
-                dead_lettered_at = case when attempts + 1 >= 12 then clock_timestamp() end
-          where outbox_id = $1
-          returning dead_lettered_at is not null",
+                    + make_interval(secs => least(300.0, power(2.0, least(attempts, 20))))
+          where outbox_id = $1",
     )
     .bind(outbox_id)
-    .bind(safe_error)
-    .fetch_one(pool)
-    .await
+    .bind(class)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Takes the row out of the retry set because no retry can succeed.
+async fn mark_undeliverable(
+    pool: &PgPool,
+    outbox_id: uuid::Uuid,
+    class: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "update extractor.outbox_events
+            set attempts = attempts + 1, last_error = $2,
+                claimed_until = null, claimed_by = null,
+                dead_lettered_at = clock_timestamp()
+          where outbox_id = $1",
+    )
+    .bind(outbox_id)
+    .bind(class)
+    .execute(pool)
+    .await?;
+    tracing::error!(class, "outbox row is undeliverable");
+    metrics::counter!("ratatoskr_extractor_outbox_publications_total", "outcome" => "undeliverable").increment(1);
+    metrics::counter!("ratatoskr_extractor_outbox_undeliverable_total", "class" => class.to_owned())
+        .increment(1);
+    Ok(())
 }
 
 /// Creates or loads the shared fleet event stream for a fresh deployment or test broker.
