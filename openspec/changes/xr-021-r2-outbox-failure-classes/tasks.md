@@ -19,4 +19,4 @@
 
 ## 5. Gate
 
-- [ ] 5.1 Run the full gate including `cargo deny --locked check` and `openspec validate --all --strict`. Why no failing test first: verification over delivered work.
+- [x] 5.1 Run the full gate including `cargo deny --locked check` and `openspec validate --all --strict`. Why no failing test first: verification over delivered work.
