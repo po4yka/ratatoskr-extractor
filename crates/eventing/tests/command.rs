@@ -91,7 +91,7 @@ async fn a_blob_capture_queues_a_blob_run() -> Result<(), Box<dyn std::error::Er
 
     let source = sqlx::query(
         "select source_kind, original_url, normalized_url, canonical_url, host, classification,
-                blob_owner, blob_digest_hex, blob_media_type, blob_length_bytes, owner_id
+                blob_digest_hex, owner_id
            from extractor.sources",
     )
     .fetch_all(database.database.pool())
@@ -105,17 +105,23 @@ async fn a_blob_capture_queues_a_blob_run() -> Result<(), Box<dyn std::error::Er
     }
     assert_eq!(source.try_get::<String, _>("host")?, "ratatoskr-telegram");
     assert_eq!(source.try_get::<String, _>("classification")?, "blob");
-    assert_eq!(
-        source.try_get::<String, _>("blob_owner")?,
-        "ratatoskr-telegram"
-    );
     assert_eq!(source.try_get::<String, _>("blob_digest_hex")?, PDF_DIGEST);
-    assert_eq!(
-        source.try_get::<String, _>("blob_media_type")?,
-        "application/pdf"
-    );
-    assert_eq!(source.try_get::<i64, _>("blob_length_bytes")?, 13_264);
     assert_eq!(source.try_get::<uuid::Uuid, _>("owner_id")?, tenant);
+
+    // The claim belongs to the run that the command queued, not to the shared source row.
+    let claim: (String, String, i64) = sqlx::query_as(
+        "select blob_owner, blob_media_type, blob_length_bytes from extractor.extraction_runs",
+    )
+    .fetch_one(database.database.pool())
+    .await?;
+    assert_eq!(
+        claim,
+        (
+            "ratatoskr-telegram".to_owned(),
+            "application/pdf".to_owned(),
+            13_264
+        )
+    );
 
     let versions: (String, String, String) = sqlx::query_as(
         "select status, parser_version, normalizer_version from extractor.extraction_runs",
@@ -157,10 +163,12 @@ async fn a_blob_source_host_is_the_fixed_telegram_literal_whatever_the_owner()
 
     consume_capture(database.database.pool(), SUBJECT, &foreign.to_bytes()).await?;
 
-    let (host, owner): (String, String) =
-        sqlx::query_as("select host, blob_owner from extractor.sources")
-            .fetch_one(database.database.pool())
-            .await?;
+    let (host, owner): (String, String) = sqlx::query_as(
+        "select s.host, r.blob_owner
+               from extractor.sources s join extractor.extraction_runs r using (source_id)",
+    )
+    .fetch_one(database.database.pool())
+    .await?;
     assert_eq!(
         owner, "ratatoskr-knowledge",
         "the owner column records the reference"

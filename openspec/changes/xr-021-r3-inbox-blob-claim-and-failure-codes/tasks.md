@@ -5,8 +5,8 @@
 
 ## 2. The blob claim belongs to its run (R3-14)
 
-- [ ] 2.1 Add failing tests in `services/extractor/tests/blob_pdf_pipeline.rs`: `a_corrected_recapture_succeeds_after_a_wrong_length_claim`, `a_recapture_with_a_wrong_media_type_fails_unsupported_media_even_for_a_known_digest`, `a_recapture_with_a_wrong_length_fails_blob_mismatch_even_for_a_known_digest`, `two_runs_of_one_digest_verify_against_their_own_claims`. Expected failure today: the claim is read from the first source row of the digest.
-- [ ] 2.2 Move the three claim columns from `extractor.sources` to `extractor.extraction_runs` in `schema.sql`, write the claim in `queue_run` and read it in `claim_queued_run`. Verify: 2.1 green and the existing suites green.
+- [x] 2.1 Add failing tests in `services/extractor/tests/blob_pdf_pipeline.rs`: `a_corrected_recapture_succeeds_after_a_wrong_length_claim`, `a_recapture_with_a_wrong_media_type_fails_unsupported_media_even_for_a_known_digest`, `a_recapture_with_a_wrong_length_fails_blob_mismatch_even_for_a_known_digest`, `two_runs_of_one_digest_verify_against_their_own_claims`. Expected failure today: the claim is read from the first source row of the digest.
+- [x] 2.2 Move the three claim columns from `extractor.sources` to `extractor.extraction_runs` in `schema.sql`, write the claim in `queue_run` and read it in `claim_queued_run`. Verify: 2.1 green and the existing suites green.
 
 ## 3. Public failure codes (R3-14)
 

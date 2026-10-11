@@ -173,7 +173,7 @@ pub async fn claim_queued_run(
     let claimed = sqlx::query_as::<_, ClaimedRow>(
         "with next as (
              select r.run_id, r.document_id, s.normalized_url, s.classification,
-                    s.blob_owner, s.blob_digest_hex, s.blob_media_type, s.blob_length_bytes
+                    r.blob_owner, s.blob_digest_hex, r.blob_media_type, r.blob_length_bytes
                from extractor.extraction_runs r
                join extractor.sources s on s.source_id = r.source_id
               where r.status = 'queued'
@@ -236,9 +236,19 @@ fn queued_run(row: ClaimedRow, max_event_bytes: usize) -> Result<QueuedRun, Cons
     })
 }
 
-/// The source row a run reads and the pipeline generations recorded with it.
+/// What a blob command claims about its bytes, stored on the run it queues and verified against
+/// the peer store when the run is claimed (XR-021 CONTRACTS.md R3-14 rule 1).
+struct BlobClaim {
+    owner: String,
+    media_type: String,
+    length_bytes: i64,
+}
+
+/// The source row a run reads, the claim of its command and the pipeline generations recorded with
+/// it.
 struct IntakeSource {
     source_id: uuid::Uuid,
+    claim: Option<BlobClaim>,
     policy_version: &'static str,
     normalizer_version: &'static str,
     parser_version: &'static str,
@@ -255,8 +265,10 @@ async fn queue_run(
     sqlx::query(
         "insert into extractor.extraction_runs
              (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
-              status, policy_version, normalizer_version, parser_version, queued_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9, $10, transaction_timestamp())",
+              status, policy_version, normalizer_version, parser_version, queued_at,
+              blob_owner, blob_media_type, blob_length_bytes)
+         values ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9, $10, transaction_timestamp(),
+                 $11, $12, $13)",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(command.command_id)
@@ -268,6 +280,9 @@ async fn queue_run(
     .bind(source.policy_version)
     .bind(source.normalizer_version)
     .bind(source.parser_version)
+    .bind(source.claim.as_ref().map(|claim| claim.owner.as_str()))
+    .bind(source.claim.as_ref().map(|claim| claim.media_type.as_str()))
+    .bind(source.claim.as_ref().map(|claim| claim.length_bytes))
     .execute(&mut **transaction)
     .await?;
     Ok(())
@@ -304,15 +319,18 @@ async fn url_source(
     .await?;
     Ok(IntakeSource {
         source_id,
+        claim: None,
         policy_version: "ssrf-v1",
         normalizer_version: "url-v1",
         parser_version: parser_version(route),
     })
 }
 
-/// Records a peer-owned blob as a source. The address is the content-addressed URN, so the same
-/// owner re-sending the same bytes reuses one source row; the URL normalizer and the SSRF policy
-/// do not apply because nothing is fetched.
+/// Records a peer-owned blob as a source and returns the command's claim for its run. The address
+/// is the content-addressed URN, so the same owner re-sending the same bytes reuses one source row,
+/// which therefore keeps only the digest identity; the owner, media type and length of each command
+/// travel on the run it queues. The URL normalizer and the SSRF policy do not apply because
+/// nothing is fetched.
 async fn blob_source(
     transaction: &mut PgTransaction<'_>,
     command: &CaptureCommand,
@@ -323,10 +341,9 @@ async fn blob_source(
     let source_id = sqlx::query_scalar::<_, uuid::Uuid>(
         "insert into extractor.sources
              (source_id, owner_id, original_url, normalized_url, canonical_url, host,
-              classification, created_at, source_kind, blob_owner, blob_digest_hex,
-              blob_media_type, blob_length_bytes)
+              classification, created_at, source_kind, blob_digest_hex)
          values ($1, $2, $3, $3, $3, 'ratatoskr-telegram', 'blob', transaction_timestamp(), 'blob',
-                 $4, $5, $6, $7)
+                 $4)
          on conflict (owner_id, normalized_url) do update
              set canonical_url = excluded.canonical_url
          returning source_id",
@@ -334,14 +351,16 @@ async fn blob_source(
     .bind(uuid::Uuid::now_v7())
     .bind(command.tenant_id.user_id().0)
     .bind(address)
-    .bind(blob.owner_service.as_str())
     .bind(blob.digest.hex.as_str())
-    .bind(blob.media_type.as_str())
-    .bind(length)
     .fetch_one(&mut **transaction)
     .await?;
     Ok(IntakeSource {
         source_id,
+        claim: Some(BlobClaim {
+            owner: blob.owner_service.as_str().to_owned(),
+            media_type: blob.media_type.as_str().to_owned(),
+            length_bytes: length,
+        }),
         policy_version: "peer-blob-v1",
         normalizer_version: "blob-v1",
         parser_version: "pdf-v1",

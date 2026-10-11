@@ -13,16 +13,10 @@ create table extractor.sources (
     classification   text        not null,
     created_at       timestamptz not null,
     source_kind      text        not null default 'url',
-    blob_owner       text,
     blob_digest_hex  text,
-    blob_media_type  text,
-    blob_length_bytes bigint,
     constraint sources_kind_is_known check (source_kind in ('url', 'blob')),
     constraint sources_blob_columns_match_kind check ((source_kind = 'blob') = (blob_digest_hex is not null)),
-    constraint sources_blob_columns_are_whole check ((blob_owner is null) = (blob_digest_hex is null) and (blob_media_type is null) = (blob_digest_hex is null) and (blob_length_bytes is null) = (blob_digest_hex is null)),
-    constraint sources_blob_owner_is_bounded check (blob_owner is null or length(blob_owner) between 1 and 64),
     constraint sources_blob_digest_is_sha256 check (blob_digest_hex is null or blob_digest_hex ~ '^[0-9a-f]{64}$'),
-    constraint sources_blob_length_is_non_negative check (blob_length_bytes is null or blob_length_bytes >= 0),
     constraint sources_urls_are_bounded check (length(original_url) between 1 and 8192 and length(normalized_url) between 1 and 8192 and length(canonical_url) between 1 and 8192),
     constraint sources_host_is_bounded check (length(host) between 1 and 253),
     unique (owner_id, normalized_url)
@@ -61,11 +55,20 @@ create table extractor.extraction_runs (
     last_error_class    text,
     claimed_until       timestamptz,
     claimed_by          text,
+    -- The blob claim of the command that queued this run (owner, media type, length), verified
+    -- against the stored bytes. It belongs to the run, not to the shared source row, so two
+    -- captures of one digest are each judged against their own claim. A url run carries none.
+    blob_owner          text,
+    blob_media_type     text,
+    blob_length_bytes   bigint,
     constraint extraction_run_status_is_known check (status in ('queued', 'running', 'succeeded', 'failed')),
     constraint extraction_run_times_match_status check ((started_at is not null) = (status in ('running', 'succeeded', 'failed')) and (completed_at is not null) = (status in ('succeeded', 'failed'))),
     constraint extraction_run_error_is_safe check (last_error_class is null or length(last_error_class) between 1 and 64),
     constraint extraction_run_claim_is_whole check ((claimed_until is null) = (claimed_by is null)),
-    constraint extraction_run_claimed_by_is_bounded check (claimed_by is null or length(claimed_by) between 1 and 64)
+    constraint extraction_run_claimed_by_is_bounded check (claimed_by is null or length(claimed_by) between 1 and 64),
+    constraint extraction_run_blob_claim_is_whole check ((blob_owner is null) = (blob_media_type is null) and (blob_owner is null) = (blob_length_bytes is null)),
+    constraint extraction_run_blob_owner_is_bounded check (blob_owner is null or length(blob_owner) between 1 and 64),
+    constraint extraction_run_blob_length_is_non_negative check (blob_length_bytes is null or blob_length_bytes >= 0)
 );
 
 create index extraction_runs_queued_idx on extractor.extraction_runs (queued_at) where status in ('queued', 'running');

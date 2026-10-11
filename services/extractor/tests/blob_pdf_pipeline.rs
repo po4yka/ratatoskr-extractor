@@ -57,19 +57,40 @@ impl Fixture {
             .await?)
     }
 
-    /// Queues and leases one blob run for `blob`.
+    /// Queues and leases one blob run for `blob`, requested by a fresh owner.
     async fn lease(&self, blob: &BlobRef) -> Result<QueuedRun, Box<dyn std::error::Error>> {
-        let command = CaptureCommandJson::blob(
+        self.queue(uuid::Uuid::now_v7(), blob).await?;
+        self.claim().await
+    }
+
+    /// Queues one capture command for `blob` on behalf of `owner`, without leasing it.
+    async fn queue(
+        &self,
+        owner: uuid::Uuid,
+        blob: &BlobRef,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = CaptureCommandJson::blob(
             blob.owner_service.as_str(),
             blob.digest.hex.as_str(),
             blob.media_type.as_str(),
             blob.length_bytes,
-        );
-        let pool = self.database.database.pool();
-        consume_capture(pool, SUBJECT, &command.to_bytes()).await?;
-        Ok(claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
-            .await?
-            .ok_or("the blob command did not produce queued work")?)
+        )
+        .with_idempotency(&format!("recapture-{}", uuid::Uuid::now_v7()));
+        command.tenant_user = owner;
+        consume_capture(self.database.database.pool(), SUBJECT, &command.to_bytes()).await?;
+        Ok(())
+    }
+
+    /// Leases the oldest queued run.
+    async fn claim(&self) -> Result<QueuedRun, Box<dyn std::error::Error>> {
+        Ok(claim_queued_run(
+            self.database.database.pool(),
+            "test-worker",
+            60,
+            MAX_EVENT_BYTES,
+        )
+        .await?
+        .ok_or("the blob command did not produce queued work")?)
     }
 
     async fn process(&self, run: &QueuedRun) -> Result<(), Box<dyn std::error::Error>> {
@@ -351,6 +372,132 @@ async fn blob_pdf_without_text_layer_records_pdf_no_text_layer()
         facts,
         (1, 0, 0),
         "the raw source is kept as evidence, no fetch row exists, and no document fact is published"
+    );
+    fixture.database.cleanup().await?;
+    Ok(())
+}
+
+/// The same bytes with a different claim about them.
+fn claiming(
+    peer: &BlobRef,
+    media_type: &str,
+    length_bytes: u64,
+) -> Result<BlobRef, Box<dyn std::error::Error>> {
+    Ok(BlobRef {
+        media_type: ratatoskr_identifiers::MediaType::parse(media_type)?,
+        length_bytes,
+        ..peer.clone()
+    })
+}
+
+#[tokio::test]
+async fn a_corrected_recapture_succeeds_after_a_wrong_length_claim()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::create().await?;
+    let owner = uuid::Uuid::now_v7();
+    let peer = fixture.telegram_blob("application/pdf", TEXT_PDF).await?;
+
+    fixture
+        .queue(owner, &claiming(&peer, "application/pdf", 7_777)?)
+        .await?;
+    let wrong = fixture.claim().await?;
+    Box::pin(fixture.process(&wrong)).await?;
+    assert_eq!(
+        fixture.outcome(&wrong).await?,
+        ("failed".to_owned(), Some("blob_mismatch".to_owned()))
+    );
+
+    fixture.queue(owner, &peer).await?;
+    let corrected = fixture.claim().await?;
+    Box::pin(fixture.process(&corrected)).await?;
+    assert_eq!(
+        fixture.outcome(&corrected).await?,
+        ("succeeded".to_owned(), None)
+    );
+    fixture.database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_recapture_with_a_wrong_media_type_fails_unsupported_media_even_for_a_known_digest()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::create().await?;
+    let owner = uuid::Uuid::now_v7();
+    let peer = fixture.telegram_blob("application/pdf", TEXT_PDF).await?;
+    fixture.queue(owner, &peer).await?;
+    let first = fixture.claim().await?;
+    Box::pin(fixture.process(&first)).await?;
+    assert_eq!(
+        fixture.outcome(&first).await?,
+        ("succeeded".to_owned(), None)
+    );
+
+    fixture
+        .queue(owner, &claiming(&peer, "image/png", peer.length_bytes)?)
+        .await?;
+    let again = fixture.claim().await?;
+    Box::pin(fixture.process(&again)).await?;
+
+    assert_eq!(
+        fixture.outcome(&again).await?,
+        ("failed".to_owned(), Some("unsupported_media".to_owned()))
+    );
+    fixture.database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_recapture_with_a_wrong_length_fails_blob_mismatch_even_for_a_known_digest()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::create().await?;
+    let owner = uuid::Uuid::now_v7();
+    let peer = fixture.telegram_blob("application/pdf", TEXT_PDF).await?;
+    fixture.queue(owner, &peer).await?;
+    let first = fixture.claim().await?;
+    Box::pin(fixture.process(&first)).await?;
+    assert_eq!(
+        fixture.outcome(&first).await?,
+        ("succeeded".to_owned(), None)
+    );
+
+    fixture
+        .queue(owner, &claiming(&peer, "application/pdf", 999_999)?)
+        .await?;
+    let again = fixture.claim().await?;
+    Box::pin(fixture.process(&again)).await?;
+
+    assert_eq!(
+        fixture.outcome(&again).await?,
+        ("failed".to_owned(), Some("blob_mismatch".to_owned()))
+    );
+    fixture.database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn two_runs_of_one_digest_verify_against_their_own_claims()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::create().await?;
+    let owner = uuid::Uuid::now_v7();
+    let peer = fixture.telegram_blob("application/pdf", TEXT_PDF).await?;
+    // Both commands are queued before either run is claimed.
+    fixture
+        .queue(owner, &claiming(&peer, "application/pdf", 7_777)?)
+        .await?;
+    fixture.queue(owner, &peer).await?;
+
+    let wrong = fixture.claim().await?;
+    let right = fixture.claim().await?;
+    Box::pin(fixture.process(&wrong)).await?;
+    Box::pin(fixture.process(&right)).await?;
+
+    assert_eq!(
+        fixture.outcome(&wrong).await?,
+        ("failed".to_owned(), Some("blob_mismatch".to_owned()))
+    );
+    assert_eq!(
+        fixture.outcome(&right).await?,
+        ("succeeded".to_owned(), None)
     );
     fixture.database.cleanup().await?;
     Ok(())

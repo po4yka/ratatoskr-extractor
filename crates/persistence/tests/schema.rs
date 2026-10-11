@@ -80,18 +80,109 @@ async fn insert_source(
     sqlx::query(
         "insert into extractor.sources
              (source_id, owner_id, original_url, normalized_url, canonical_url, host,
-              classification, created_at, source_kind, blob_owner, blob_digest_hex,
-              blob_media_type, blob_length_bytes)
-         values ($1, $2, $3, $3, $3, 'ratatoskr-telegram', 'blob', now(), $4,
-                 case when $5::text is null then null else 'ratatoskr-telegram' end, $5,
-                 case when $5::text is null then null else 'application/pdf' end,
-                 case when $5::text is null then null else 10::bigint end)",
+              classification, created_at, source_kind, blob_digest_hex)
+         values ($1, $2, $3, $3, $3, 'ratatoskr-telegram', 'blob', now(), $4, $5)",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(uuid::Uuid::now_v7())
     .bind(address)
     .bind(kind)
     .bind(digest)
+    .execute(database.database.pool())
+    .await
+}
+
+#[tokio::test]
+async fn a_run_claim_is_all_three_columns_or_none() -> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let urn = format!("urn:ratatoskr:blob:sha256:{}", "b".repeat(64));
+    let source = uuid::Uuid::now_v7();
+    sqlx::query(
+        "insert into extractor.sources
+             (source_id, owner_id, original_url, normalized_url, canonical_url, host,
+              classification, created_at, source_kind, blob_digest_hex)
+         values ($1, $2, $3, $3, $3, 'ratatoskr-telegram', 'blob', now(), 'blob', $4)",
+    )
+    .bind(source)
+    .bind(uuid::Uuid::now_v7())
+    .bind(&urn)
+    .bind("b".repeat(64))
+    .execute(database.database.pool())
+    .await?;
+
+    let none = insert_run(&database, source, (None, None, None)).await;
+    let whole = insert_run(
+        &database,
+        source,
+        (
+            Some("ratatoskr-telegram"),
+            Some("application/pdf"),
+            Some(10),
+        ),
+    )
+    .await;
+    let owner_only = insert_run(&database, source, (Some("ratatoskr-telegram"), None, None)).await;
+    let negative = insert_run(
+        &database,
+        source,
+        (
+            Some("ratatoskr-telegram"),
+            Some("application/pdf"),
+            Some(-1),
+        ),
+    )
+    .await;
+    let empty_owner = insert_run(
+        &database,
+        source,
+        (Some(""), Some("application/pdf"), Some(10)),
+    )
+    .await;
+
+    database.cleanup().await?;
+    assert!(none.is_ok(), "a url run carries no claim");
+    assert!(whole.is_ok(), "a complete claim must be accepted");
+    assert!(owner_only.is_err(), "a claim is all three columns or none");
+    assert!(negative.is_err(), "a length is never negative");
+    assert!(
+        empty_owner.is_err(),
+        "the owner is bounded to 1..=64 characters"
+    );
+    Ok(())
+}
+
+async fn insert_run(
+    database: &TestDatabase,
+    source: uuid::Uuid,
+    claim: (Option<&str>, Option<&str>, Option<i64>),
+) -> Result<sqlx::postgres::PgQueryResult, sqlx::Error> {
+    let command = uuid::Uuid::now_v7();
+    sqlx::query(
+        "insert into extractor.inbox_events
+             (command_id, subject, command_type, producer, received_at)
+         values ($1, 'cmd.content.capture.requested.v1', 'content.capture.requested.v1',
+                 'ratatoskr-platform', now())",
+    )
+    .bind(command)
+    .execute(database.database.pool())
+    .await?;
+    sqlx::query(
+        "insert into extractor.extraction_runs
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+              status, policy_version, normalizer_version, parser_version, queued_at,
+              blob_owner, blob_media_type, blob_length_bytes)
+         values ($1, $2, $3, $4, 'operation:x', $5, $6, 'queued', 'p', 'n', 'v', now(),
+                 $7, $8, $9)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(command)
+    .bind(uuid::Uuid::now_v7())
+    .bind(uuid::Uuid::now_v7())
+    .bind(source)
+    .bind(uuid::Uuid::now_v7())
+    .bind(claim.0)
+    .bind(claim.1)
+    .bind(claim.2)
     .execute(database.database.pool())
     .await
 }
