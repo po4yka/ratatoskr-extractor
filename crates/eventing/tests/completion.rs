@@ -3,11 +3,12 @@
 use extractor_blob_store::BlobStore;
 use extractor_document_ir::{CandidateDecision, QualityMetrics, QualityReason};
 use extractor_eventing::{
-    CompletedFetch, Completion, complete_document, consume_capture, store_document_ir,
+    CompletedFetch, Completion, claim_queued_run, complete_document, consume_capture,
+    store_document_ir,
 };
 use extractor_persistence::test_support::TestDatabase;
-use extractor_test_support::TemporaryBlobRoot;
 use extractor_test_support::capture::CaptureCommandJson;
+use extractor_test_support::{MAX_EVENT_BYTES, TemporaryBlobRoot};
 use ratatoskr_document_contracts::{
     ContentDocumentExtracted, Document, DocumentAddress, DocumentBlock, DocumentProvenance,
     ExtractionStrategy,
@@ -31,12 +32,10 @@ async fn completed_document_and_report_commit_with_one_run()
     let operation_id = capture.operation_id;
     let command = capture.to_bytes();
     consume_capture(database.database.pool(), SUBJECT, &command).await?;
-    let (run_id, document_id): (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
-        "update extractor.extraction_runs set status = 'running', started_at = now()
-         returning run_id, document_id",
-    )
-    .fetch_one(database.database.pool())
-    .await?;
+    let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
+        .await?
+        .ok_or("the command did not produce queued work")?;
+    let (run_id, document_id) = (run.run_id, run.document_id.0);
     let source = blob_ref("text/html", 17, 'a')?;
     let document = document(source.clone(), DocumentId(document_id))?;
     let root = TemporaryBlobRoot::create().await?;
@@ -64,7 +63,7 @@ async fn completed_document_and_report_commit_with_one_run()
     assert_eq!(
         complete_document(
             database.database.pool(),
-            run_id,
+            &run,
             &document,
             &ir_blob,
             &fetch,
@@ -77,7 +76,7 @@ async fn completed_document_and_report_commit_with_one_run()
     assert_eq!(
         complete_document(
             database.database.pool(),
-            run_id,
+            &run,
             &document,
             &ir_blob,
             &fetch,
@@ -110,12 +109,10 @@ async fn document_event_payload_is_the_contract_type() -> Result<(), Box<dyn std
     let correlation = capture.correlation_id.clone();
     let tenant = capture.tenant_user;
     consume_capture(database.database.pool(), SUBJECT, &capture.to_bytes()).await?;
-    let (run_id, document_id): (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
-        "update extractor.extraction_runs set status = 'running', started_at = now()
-         returning run_id, document_id",
-    )
-    .fetch_one(database.database.pool())
-    .await?;
+    let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
+        .await?
+        .ok_or("the command did not produce queued work")?;
+    let document_id = run.document_id.0;
     let source = blob_ref("text/html", 17, 'a')?;
     let document = document(source.clone(), DocumentId(document_id))?;
     let root = TemporaryBlobRoot::create().await?;
@@ -135,7 +132,7 @@ async fn document_event_payload_is_the_contract_type() -> Result<(), Box<dyn std
     };
     complete_document(
         database.database.pool(),
-        run_id,
+        &run,
         &document,
         &ir_blob,
         &fetch,
@@ -176,6 +173,174 @@ async fn document_event_payload_is_the_contract_type() -> Result<(), Box<dyn std
         format!("command:{command_id}")
     );
 
+    database.cleanup().await?;
+    Ok(())
+}
+
+/// The warning an oversize document leaves on an otherwise successful operation.
+const NOT_INGESTED_MESSAGE: &str =
+    "The document was extracted, but it is too large to add to the library.";
+
+/// A document whose serialized event envelope is larger than the smallest accepted limit.
+const LARGE_TEXT_BYTES: usize = 80_000;
+const SMALLEST_EVENT_LIMIT: usize = 65_536;
+
+struct Completed {
+    completion: Completion,
+    document: Document,
+    ir_blob: BlobRef,
+    run_id: uuid::Uuid,
+}
+
+/// Completes one run of a large document under `max_event_bytes`.
+async fn complete_large_document(
+    database: &TestDatabase,
+    key: &str,
+    max_event_bytes: usize,
+) -> Result<Completed, Box<dyn std::error::Error>> {
+    let pool = database.database.pool();
+    consume_capture(
+        pool,
+        SUBJECT,
+        &CaptureCommandJson::url("https://example.test/article")
+            .with_idempotency(key)
+            .to_bytes(),
+    )
+    .await?;
+    let run = claim_queued_run(pool, "test-worker", 60, max_event_bytes)
+        .await?
+        .ok_or("the command did not produce queued work")?;
+    let source = blob_ref("text/html", 17, 'a')?;
+    let document = document_with_text(
+        source.clone(),
+        run.document_id,
+        &"a long paragraph ".repeat(LARGE_TEXT_BYTES / 17),
+    )?;
+    let root = TemporaryBlobRoot::create().await?;
+    let ir_blob = store_document_ir(&BlobStore::new(root.path()), &document).await?;
+    let fetch = CompletedFetch {
+        final_url: "https://example.test/article",
+        http_status: 200,
+        media_type: "text/html",
+        wire_bytes: 17,
+        decoded_bytes: 17,
+        attempts: 1,
+        cache_outcome: "fresh",
+        etag: None,
+        last_modified: None,
+        raw_blob: &source,
+    };
+    let completion = complete_document(
+        pool,
+        &run,
+        &document,
+        &ir_blob,
+        &fetch,
+        &candidate_decisions(),
+        &[],
+    )
+    .await?;
+    Ok(Completed {
+        completion,
+        document,
+        ir_blob,
+        run_id: run.run_id,
+    })
+}
+
+/// The terminal operation reports in the outbox.
+async fn reported_operations(
+    pool: &sqlx::PgPool,
+) -> Result<Vec<OperationReported>, Box<dyn std::error::Error>> {
+    let payloads: Vec<serde_json::Value> = sqlx::query_scalar(
+        "select payload from extractor.outbox_events
+          where subject = 'evt.platform.operation.reported.v1'",
+    )
+    .fetch_all(pool)
+    .await?;
+    // Intake enqueues the non-terminal acceptance report; only the terminal one is under test.
+    let mut terminal = Vec::new();
+    for payload in payloads {
+        let envelope: EventEnvelope = serde_json::from_value(payload)?;
+        let report = envelope.payload_as::<OperationReported>()?;
+        if report.status.is_terminal() {
+            terminal.push(report);
+        }
+    }
+    Ok(terminal)
+}
+
+#[tokio::test]
+async fn an_oversize_document_is_reported_partial_and_no_event_is_enqueued()
+-> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    let completed = complete_large_document(&database, "oversize", SMALLEST_EVENT_LIMIT).await?;
+    assert_eq!(completed.completion, Completion::Applied);
+
+    let document_events: i64 = sqlx::query_scalar(
+        "select count(*) from extractor.outbox_events
+          where subject = 'evt.content.document.extracted.v1'",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(document_events, 0, "an oversize fact must not be enqueued");
+
+    let reports = reported_operations(pool).await?;
+    let [report] = reports.as_slice() else {
+        return Err(format!("expected one operation report, found {}", reports.len()).into());
+    };
+    assert_eq!(report.status, OperationStatus::PartiallySucceeded);
+    let [warning] = report.warnings.as_slice() else {
+        return Err("expected exactly one warning".into());
+    };
+    assert_eq!(warning.code.as_str(), "content.document.not_ingested");
+    assert_eq!(warning.message.as_str(), NOT_INGESTED_MESSAGE);
+    assert!(report.error.is_none());
+    report.validate()?;
+    let [result] = report.results.as_slice() else {
+        return Err("the extracted document must stay in the results".into());
+    };
+    assert_eq!(result.result_kind.as_str(), "content.document");
+    assert_eq!(
+        result.target,
+        completed.document.document_id.as_entity_ref()
+    );
+    assert_eq!(result.blob.as_ref(), Some(&completed.ir_blob));
+
+    // The extraction itself succeeded and is recorded as such.
+    let status: String =
+        sqlx::query_scalar("select status from extractor.extraction_runs where run_id = $1")
+            .bind(completed.run_id)
+            .fetch_one(pool)
+            .await?;
+    assert_eq!(status, "succeeded");
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_document_under_the_limit_still_succeeds() -> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    // The very document the oversize test refuses, under the production default limit.
+    let completed = complete_large_document(&database, "under-limit", MAX_EVENT_BYTES).await?;
+    assert_eq!(completed.completion, Completion::Applied);
+
+    let document_events: i64 = sqlx::query_scalar(
+        "select count(*) from extractor.outbox_events
+          where subject = 'evt.content.document.extracted.v1'",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(document_events, 1);
+    let reports = reported_operations(pool).await?;
+    let [report] = reports.as_slice() else {
+        return Err("expected one operation report".into());
+    };
+    assert_eq!(report.status, OperationStatus::Succeeded);
+    assert!(report.warnings.is_empty());
+    report.validate()?;
     database.cleanup().await?;
     Ok(())
 }
@@ -269,9 +434,17 @@ fn document(
     source_blob: BlobRef,
     document_id: DocumentId,
 ) -> Result<Document, Box<dyn std::error::Error>> {
+    document_with_text(source_blob, document_id, "One document.")
+}
+
+fn document_with_text(
+    source_blob: BlobRef,
+    document_id: DocumentId,
+    text: &str,
+) -> Result<Document, Box<dyn std::error::Error>> {
     let blocks = vec![DocumentBlock::Paragraph {
         block_id: BlockId::parse("018f0000-0000-7000-8000-000000000099")?,
-        text: "One document.".to_owned(),
+        text: text.to_owned(),
     }];
     let digest = format!(
         "{:x}",

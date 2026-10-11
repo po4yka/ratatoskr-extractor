@@ -98,6 +98,8 @@ pub struct QueuedRun {
     pub classification: String,
     /// Peer-owned bytes this run reads, present exactly for a blob capture.
     pub blob: Option<BlobRef>,
+    /// Largest serialized `content.document.extracted.v1` envelope the completion may enqueue.
+    pub max_event_bytes: usize,
 }
 
 /// Why a capture command could not be consumed.

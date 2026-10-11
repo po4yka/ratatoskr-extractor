@@ -242,7 +242,7 @@ async fn complete_html(
     let fetch = completed_fetch(&fetched);
     complete_document(
         pool,
-        run.run_id,
+        run,
         &extraction.document,
         &ir_blob,
         &fetch,
@@ -383,7 +383,7 @@ async fn complete_provider(
     let fetch = completed_fetch(&fetched);
     complete_document(
         pool,
-        run.run_id,
+        run,
         &extraction.document,
         &ir_blob,
         &fetch,
@@ -513,7 +513,7 @@ async fn complete_escalated(
     let fetch = completed_fetch(fetched);
     complete_document(
         pool,
-        run.run_id,
+        run,
         &extraction.document,
         &ir_blob,
         &fetch,

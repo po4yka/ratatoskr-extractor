@@ -7,6 +7,10 @@ RATATOSKR__DATABASE__MAX_CONNECTIONS=10
 RATATOSKR__BUS__URL=nats://127.0.0.1:4222
 RATATOSKR__BUS__NKEY_SEED_PATH=/etc/ratatoskr/extractor.nkey
 RATATOSKR__BUS__DURABLE_NAME=ratatoskr_extractor_capture
+# Largest serialized content.document.extracted.v1 envelope to enqueue (default 8000000, accepted
+# 65536..=8388608, below the 8 MiB max_payload of the broker). A larger document is reported as
+# partially succeeded and never published.
+# RATATOSKR__BUS__MAX_EVENT_BYTES=8000000
 RATATOSKR__PARSER__MAX_INPUT_BYTES=52428800
 RATATOSKR__PARSER__MAX_DOM_NODES=250000
 RATATOSKR__FETCH__PER_HOST_MIN_INTERVAL_MS=500

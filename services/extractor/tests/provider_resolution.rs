@@ -6,6 +6,7 @@ use extractor_core::ExtractorConfig;
 use extractor_eventing::claim_queued_run;
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
 use ratatoskr_identifiers::{BlobRef, DocumentId};
 use serde_json::json;
@@ -149,7 +150,7 @@ async fn hn_ask_post_completes_without_second_request() -> Result<(), Box<dyn st
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -237,7 +238,7 @@ async fn reddit_self_post_completes_without_second_request()
         "reddit",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -305,7 +306,7 @@ async fn transport_failure_still_terminates_run() -> Result<(), Box<dyn std::err
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -392,7 +393,7 @@ async fn non_json_provider_response_falls_through_to_html() -> Result<(), Box<dy
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -498,7 +499,7 @@ async fn malformed_provider_schema_falls_through_instead_of_dying()
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -601,7 +602,7 @@ async fn failed_fallback_terminates_recording_both_outcomes()
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -691,7 +692,7 @@ async fn policy_blocked_article_sends_no_second_request() -> Result<(), Box<dyn 
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 

@@ -2,6 +2,7 @@
 
 use extractor_eventing::{Completion, ResolutionStep, claim_queued_run, consume_capture, fail_run};
 use extractor_persistence::test_support::TestDatabase;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::capture::CaptureCommandJson;
 use sqlx::Row as _;
 
@@ -18,7 +19,8 @@ async fn resolution_steps_commit_with_terminal_state() -> Result<(), Box<dyn std
         .with_idempotency("capture-resolution-steps-commit");
     let command = document.to_bytes();
     consume_capture(database.database.pool(), SUBJECT, &command).await?;
-    let claimed = claim_queued_run(database.database.pool(), "test-worker", 60).await?;
+    let claimed =
+        claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES).await?;
     let run_id = claimed.expect("queued run must exist").run_id;
 
     let steps = [

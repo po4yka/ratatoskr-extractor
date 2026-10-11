@@ -147,7 +147,7 @@ pub(crate) async fn resolve_external_article(
     let ir_blob = store_document_ir(store, &article.document).await?;
     complete_document(
         pool,
-        run.run_id,
+        run,
         &article.document,
         &ir_blob,
         &article_fetch,
@@ -303,7 +303,7 @@ pub(crate) async fn fallback_to_generic_html(
     let ir_blob = store_document_ir(store, &extraction.document).await?;
     complete_document(
         pool,
-        run.run_id,
+        run,
         &extraction.document,
         &ir_blob,
         &fallback_fetch,

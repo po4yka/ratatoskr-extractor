@@ -158,7 +158,8 @@ pub async fn consume_capture(
     Ok(Reception::Applied)
 }
 
-/// Leases one queued run for bounded worker execution.
+/// Leases one queued run for bounded worker execution. The run carries `max_event_bytes`, the
+/// policy of the process that claimed it, so its completion enforces the same limit.
 ///
 /// # Errors
 ///
@@ -167,6 +168,7 @@ pub async fn claim_queued_run(
     pool: &PgPool,
     claimed_by: &str,
     lease_seconds: i32,
+    max_event_bytes: usize,
 ) -> Result<Option<QueuedRun>, ConsumeError> {
     let claimed = sqlx::query_as::<_, ClaimedRow>(
         "with next as (
@@ -193,7 +195,9 @@ pub async fn claim_queued_run(
     .bind(lease_seconds.clamp(1, 3_600))
     .fetch_optional(pool)
     .await?;
-    claimed.map(queued_run).transpose()
+    claimed
+        .map(|row| queued_run(row, max_event_bytes))
+        .transpose()
 }
 
 /// One claimed row: run, document, source address, classification and the optional blob columns.
@@ -208,7 +212,7 @@ type ClaimedRow = (
     Option<i64>,
 );
 
-fn queued_run(row: ClaimedRow) -> Result<QueuedRun, ConsumeError> {
+fn queued_run(row: ClaimedRow, max_event_bytes: usize) -> Result<QueuedRun, ConsumeError> {
     let (run_id, document_id, url, classification, owner, digest, media_type, length) = row;
     let blob = match (owner, digest, media_type, length) {
         (Some(owner), Some(digest), Some(media_type), Some(length)) => Some(BlobRef {
@@ -228,6 +232,7 @@ fn queued_run(row: ClaimedRow) -> Result<QueuedRun, ConsumeError> {
         url,
         classification,
         blob,
+        max_event_bytes,
     })
 }
 

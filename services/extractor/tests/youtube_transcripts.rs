@@ -6,6 +6,7 @@ use extractor_core::ExtractorConfig;
 use extractor_eventing::claim_queued_run;
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
 use ratatoskr_identifiers::{BlobRef, DocumentId};
 use serde_json::json;
@@ -77,7 +78,7 @@ async fn youtube_run_completes_from_exactly_two_scripted_fetches()
         "youtube",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -193,7 +194,7 @@ async fn video_without_tracks_is_rejected_with_typed_class()
         "youtube",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 

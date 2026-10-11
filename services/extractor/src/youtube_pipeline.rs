@@ -302,7 +302,7 @@ async fn complete_youtube_flow(
     let ir_blob = store_document_ir(store, &extraction.document).await?;
     complete_document(
         pool,
-        run.run_id,
+        run,
         &extraction.document,
         &ir_blob,
         &completed_fetch(&track_fetch),

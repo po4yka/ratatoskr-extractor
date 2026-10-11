@@ -6,6 +6,7 @@ use extractor_core::ExtractorConfig;
 use extractor_eventing::{QueuedRun, RenderBus, claim_queued_run, consume_capture};
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::TemporaryBlobRoot;
 use extractor_test_support::capture::CaptureCommandJson;
 use futures_util::stream;
@@ -66,7 +67,7 @@ impl Fixture {
         );
         let pool = self.database.database.pool();
         consume_capture(pool, SUBJECT, &command.to_bytes()).await?;
-        Ok(claim_queued_run(pool, "test-worker", 60)
+        Ok(claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
             .await?
             .ok_or("the blob command did not produce queued work")?)
     }

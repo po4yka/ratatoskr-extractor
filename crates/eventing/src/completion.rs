@@ -3,7 +3,7 @@
 use extractor_blob_store::BlobStore;
 use extractor_document_ir::CandidateDecision;
 use ratatoskr_document_contracts::{ContentDocumentExtracted, Document};
-use ratatoskr_error_contracts::{ErrorCode, ErrorEnvelope};
+use ratatoskr_error_contracts::{ErrorCode, ErrorEnvelope, WarningEnvelope};
 use ratatoskr_event_envelope::{
     EnvelopeSchemaVersion, EventEnvelope, EventPayload as _, ProducerName,
 };
@@ -16,7 +16,7 @@ use ratatoskr_operation_contracts::{
 use sqlx::{PgPool, PgTransaction};
 
 use crate::terminal::{self, ResolutionStep};
-use crate::{CompletedFetch, Completion, ConsumeError, PRODUCER, REPORT_SUBJECT};
+use crate::{CompletedFetch, Completion, ConsumeError, PRODUCER, QueuedRun, REPORT_SUBJECT};
 
 /// Atomically records a terminal safe failure and its operation report.
 ///
@@ -96,14 +96,18 @@ async fn enqueue_failed_report(
     enqueue_event(transaction, context, REPORT_SUBJECT, &envelope).await
 }
 
-/// Atomically commits one completed document and its two event facts.
+/// Atomically commits one completed document and its event facts.
+///
+/// The document fact is enqueued only when its serialized envelope fits `run.max_event_bytes`;
+/// otherwise the operation report alone is enqueued, as `partially_succeeded` (XR-021
+/// CONTRACTS.md R2-04 rule 3).
 ///
 /// # Errors
 ///
 /// Returns [`ConsumeError`] when the run or terminal records cannot be validated or persisted.
 pub async fn complete_document(
     pool: &PgPool,
-    run_id: uuid::Uuid,
+    run: &QueuedRun,
     document: &Document,
     ir_blob: &BlobRef,
     fetch: &CompletedFetch<'_>,
@@ -112,7 +116,7 @@ pub async fn complete_document(
 ) -> Result<Completion, ConsumeError> {
     complete(
         pool,
-        run_id,
+        run,
         &Success {
             document,
             ir_blob,
@@ -125,7 +129,7 @@ pub async fn complete_document(
     .await
 }
 
-/// Atomically commits one document extracted from a peer-owned blob and its two event facts.
+/// Atomically commits one document extracted from a peer-owned blob and its event facts.
 ///
 /// No fetch happened, so no `extractor.fetches` row is written; `raw_blob` is the extractor-owned
 /// copy of the peer bytes.
@@ -135,7 +139,7 @@ pub async fn complete_document(
 /// Returns [`ConsumeError`] when the run or terminal records cannot be validated or persisted.
 pub async fn complete_blob_document(
     pool: &PgPool,
-    run_id: uuid::Uuid,
+    run: &QueuedRun,
     document: &Document,
     ir_blob: &BlobRef,
     raw_blob: &BlobRef,
@@ -144,7 +148,7 @@ pub async fn complete_blob_document(
 ) -> Result<Completion, ConsumeError> {
     complete(
         pool,
-        run_id,
+        run,
         &Success {
             document,
             ir_blob,
@@ -169,7 +173,7 @@ struct Success<'a> {
 
 async fn complete(
     pool: &PgPool,
-    run_id: uuid::Uuid,
+    run: &QueuedRun,
     success: &Success<'_>,
 ) -> Result<Completion, ConsumeError> {
     let Success {
@@ -180,6 +184,7 @@ async fn complete(
         candidates,
         steps,
     } = *success;
+    let run_id = run.run_id;
     require_owned_sha256(ir_blob)?;
     require_owned_sha256(raw_blob)?;
     let length = i64::try_from(ir_blob.length_bytes).map_err(|_| ConsumeError::InvalidArtifact)?;
@@ -220,8 +225,18 @@ async fn complete(
 
     terminal::insert_candidates(&mut transaction, run_id, candidates).await?;
     terminal::insert_resolution_steps(&mut transaction, run_id, steps).await?;
-    enqueue_completion_events(&mut transaction, &context, document, ir_blob).await?;
+    let ingested = enqueue_completion_events(
+        &mut transaction,
+        &context,
+        document,
+        ir_blob,
+        run.max_event_bytes,
+    )
+    .await?;
     transaction.commit().await?;
+    if !ingested {
+        metrics::counter!("ratatoskr_extractor_documents_not_ingested_total").increment(1);
+    }
     Ok(Completion::Applied)
 }
 
@@ -449,12 +464,24 @@ impl From<CompletionRow> for CompletionContext {
     }
 }
 
+/// Warning code of a document that was extracted but is too large to publish.
+const NOT_INGESTED_CODE: &str = "content.document.not_ingested";
+const NOT_INGESTED_MESSAGE: &str =
+    "The document was extracted, but it is too large to add to the library.";
+
+/// Enqueues the document fact and the terminal operation report in the completion transaction.
+///
+/// The fact is enqueued only when its serialized envelope fits `max_event_bytes`. Otherwise the
+/// report alone is enqueued, as `partially_succeeded` with the not-ingested warning, so the user
+/// is told the truth instead of seeing a success whose document Knowledge never receives
+/// (XR-021 CONTRACTS.md R2-04 rule 3). Returns whether the fact was enqueued.
 async fn enqueue_completion_events(
     transaction: &mut PgTransaction<'_>,
     context: &CompletionContext,
     document: &Document,
     ir_blob: &BlobRef,
-) -> Result<(), ConsumeError> {
+    max_event_bytes: usize,
+) -> Result<bool, ConsumeError> {
     let operation_id = OperationId(context.operation);
     let correlation_id = EntityRef::parse(&context.correlation)?;
     let tenant_id = TenantRef::parse(&format!("user:{}", context.owner))?;
@@ -480,13 +507,26 @@ async fn enqueue_completion_events(
         extensions: Extensions::new(),
     };
     document_event.set_payload(&fact)?;
-    enqueue_event(
-        transaction,
-        context,
-        "evt.content.document.extracted.v1",
-        &document_event,
-    )
-    .await?;
+    // The outbox publishes the stored JSON value, so the guard measures exactly those bytes.
+    let document_value = serde_json::to_value(&document_event)?;
+    let serialized_bytes = serde_json::to_vec(&document_value)?.len();
+    let ingested = serialized_bytes <= max_event_bytes;
+    if ingested {
+        enqueue_json(
+            transaction,
+            context,
+            "evt.content.document.extracted.v1",
+            document_event.event_id,
+            &document_value,
+        )
+        .await?;
+    } else {
+        tracing::warn!(
+            serialized_bytes,
+            max_event_bytes,
+            "the extracted document is too large to publish"
+        );
+    }
 
     let event_id = EventId::new_v7();
     let mut report_event = EventEnvelope {
@@ -502,9 +542,23 @@ async fn enqueue_completion_events(
         payload: serde_json::Map::new(),
         extensions: Extensions::new(),
     };
-    report_event.set_payload(&OperationReported {
+    let warnings = if ingested {
+        Vec::new()
+    } else {
+        vec![WarningEnvelope {
+            code: ErrorCode::parse(NOT_INGESTED_CODE)?,
+            message: SafeMessage::parse(NOT_INGESTED_MESSAGE)?,
+            field_path: None,
+            extensions: Extensions::new(),
+        }]
+    };
+    let report = OperationReported {
         operation_id,
-        status: OperationStatus::Succeeded,
+        status: if ingested {
+            OperationStatus::Succeeded
+        } else {
+            OperationStatus::PartiallySucceeded
+        },
         stage: None,
         progress_percent: None,
         results: vec![OperationResultRef {
@@ -515,10 +569,15 @@ async fn enqueue_completion_events(
             extensions: Extensions::new(),
         }],
         error: None,
-        warnings: Vec::new(),
+        warnings,
         extensions: Extensions::new(),
-    })?;
-    enqueue_event(transaction, context, REPORT_SUBJECT, &report_event).await
+    };
+    report
+        .validate()
+        .map_err(|_| ConsumeError::InvalidPayload)?;
+    report_event.set_payload(&report)?;
+    enqueue_event(transaction, context, REPORT_SUBJECT, &report_event).await?;
+    Ok(ingested)
 }
 
 async fn enqueue_event(
@@ -527,6 +586,23 @@ async fn enqueue_event(
     subject: &str,
     envelope: &EventEnvelope,
 ) -> Result<(), ConsumeError> {
+    enqueue_json(
+        transaction,
+        context,
+        subject,
+        envelope.event_id,
+        &serde_json::to_value(envelope)?,
+    )
+    .await
+}
+
+async fn enqueue_json(
+    transaction: &mut PgTransaction<'_>,
+    context: &CompletionContext,
+    subject: &str,
+    event_id: EventId,
+    payload: &serde_json::Value,
+) -> Result<(), ConsumeError> {
     sqlx::query(
         "insert into extractor.outbox_events
              (outbox_id, message_id, causation_command_id, operation_id, subject, payload,
@@ -534,11 +610,11 @@ async fn enqueue_event(
          values ($1, $2, $3, $4, $5, $6, transaction_timestamp(), transaction_timestamp())",
     )
     .bind(uuid::Uuid::now_v7())
-    .bind(envelope.event_id.0)
+    .bind(event_id.0)
     .bind(context.command)
     .bind(context.operation)
     .bind(subject)
-    .bind(serde_json::to_value(envelope)?)
+    .bind(payload)
     .execute(&mut **transaction)
     .await?;
     Ok(())

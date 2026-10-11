@@ -5,6 +5,10 @@
 pub mod broker;
 pub mod capture;
 
+/// The production default of `bus.max_event_bytes`, for tests that claim runs without exercising
+/// the enqueue-time size guard.
+pub const MAX_EVENT_BYTES: usize = 8_000_000;
+
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -60,7 +60,7 @@ async fn hn_link_post_completes_from_resolved_article() -> Result<(), Box<dyn st
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
     extractor_service::_complete_provider_for_test(

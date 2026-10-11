@@ -227,7 +227,7 @@ async fn finish_pdf(
             let fetch = completed_fetch(fetched);
             complete_document(
                 pool,
-                run.run_id,
+                run,
                 &extraction.document,
                 &ir_blob,
                 &fetch,
@@ -239,7 +239,7 @@ async fn finish_pdf(
         None => {
             complete_blob_document(
                 pool,
-                run.run_id,
+                run,
                 &extraction.document,
                 &ir_blob,
                 raw,

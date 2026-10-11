@@ -217,6 +217,7 @@ fn spawn_background_loops(
         config.youtube.clone(),
         bus,
         config.bus.worker_lease_seconds,
+        config.bus.max_event_bytes,
         config.bus.poll_interval_ms,
         admission,
         background_cancel.child_token(),
@@ -294,6 +295,7 @@ async fn worker_loop(
     youtube: YoutubeConfig,
     bus: RenderBus,
     lease_seconds: i32,
+    max_event_bytes: usize,
     poll_interval_ms: u64,
     admission: AdmissionController,
     cancellation: CancellationToken,
@@ -309,7 +311,9 @@ async fn worker_loop(
         let Ok(permit) = admission.try_admit() else {
             return Ok(());
         };
-        let Some(run) = claim_queued_run(&pool, "extractor", lease_seconds).await? else {
+        let Some(run) =
+            claim_queued_run(&pool, "extractor", lease_seconds, max_event_bytes).await?
+        else {
             drop(permit);
             continue;
         };

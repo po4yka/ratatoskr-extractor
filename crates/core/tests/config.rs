@@ -400,6 +400,29 @@ fn telegram_root_defaults_to_the_durable_layout_and_must_be_absolute()
 }
 
 #[test]
+fn bus_max_event_bytes_defaults_and_bounds() -> Result<(), Box<dyn std::error::Error>> {
+    let built_in = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
+    assert_eq!(built_in.bus.max_event_bytes, 8_000_000);
+    assert_eq!(load_from(&base_figment())?.bus.max_event_bytes, 8_000_000);
+
+    // Inclusive bounds: the lowest value that still fits any document event, and the broker's
+    // 8 MiB `max_payload` that Platform's ratatoskr.conf sets.
+    for accepted in [65_536_usize, 8_388_608] {
+        let config = load_from(&base_figment().merge(("bus.max_event_bytes", accepted)))?;
+        assert_eq!(config.bus.max_event_bytes, accepted);
+    }
+    for refused in [0_usize, 65_535, 8_388_609] {
+        let report = rejection_report(&[("bus.max_event_bytes", json!(refused))])?;
+        assert!(report.contains("bus.max_event_bytes"), "{report}");
+        assert!(
+            report.contains("RATATOSKR__BUS__MAX_EVENT_BYTES"),
+            "{report}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn provision_topology_defaults_off() -> Result<(), Box<dyn std::error::Error>> {
     let built_in = ExtractorConfig::built_in(Path::new("/var/lib/ratatoskr-extractor/blobs"));
     assert!(

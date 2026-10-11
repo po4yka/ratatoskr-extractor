@@ -6,6 +6,7 @@ use extractor_core::ExtractorConfig;
 use extractor_eventing::{QueuedRun, RenderBus, claim_queued_run};
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::TemporaryBlobRoot;
 use extractor_url_routing::RoutingPolicy;
 
@@ -106,7 +107,7 @@ async fn empty_shell_escalates_and_completes_from_rendered_dom()
         "generic_web",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -194,7 +195,7 @@ async fn host_outside_the_allowlist_denies_without_rendering()
         "generic_web",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -286,7 +287,7 @@ async fn exhausted_daily_budget_denies_without_rendering() -> Result<(), Box<dyn
         "generic_web",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 

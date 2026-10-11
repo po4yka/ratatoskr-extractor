@@ -11,6 +11,10 @@ const ENV_PREFIX: &str = "RATATOSKR__";
 
 /// The capture durable Edge provisions for the extractor (XR-021 CONTRACTS.md S04).
 const FIXED_CAPTURE_DURABLE: &str = "ratatoskr_extractor_capture";
+/// Default `bus.max_event_bytes`: under the 8 MiB `max_payload` Platform's `ratatoskr.conf` sets.
+const DEFAULT_MAX_EVENT_BYTES: usize = 8_000_000;
+/// Accepted `bus.max_event_bytes`: the lowest value is 64 KiB, the highest the broker's 8 MiB.
+const MAX_EVENT_BYTES_RANGE: std::ops::RangeInclusive<usize> = 65_536..=8_388_608;
 
 /// All validated process configuration.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -91,6 +95,10 @@ pub struct BusConfig {
     pub worker_lease_seconds: i32,
     /// Creates streams and the capture durable; for an unauthenticated development broker only.
     pub provision_topology: bool,
+    /// Largest serialized `content.document.extracted.v1` envelope the extractor enqueues; a
+    /// larger document is reported as extracted but not ingested. Must stay within the broker's
+    /// `max_payload`.
+    pub max_event_bytes: usize,
 }
 
 /// Parse-once resource ceilings.
@@ -300,6 +308,7 @@ impl ExtractorConfig {
                 outbox_batch_size: 32,
                 worker_lease_seconds: 60,
                 provision_topology: false,
+                max_event_bytes: DEFAULT_MAX_EVENT_BYTES,
             },
             fetch: FetchConfig {
                 max_url_length: 8_192,
@@ -541,6 +550,10 @@ fn validate_bus(config: &BusConfig, fetch_timeout_ms: u64, violations: &mut Vec<
         (
             (1..=3_600).contains(&config.worker_lease_seconds),
             "bus.worker_lease_seconds",
+        ),
+        (
+            MAX_EVENT_BYTES_RANGE.contains(&config.max_event_bytes),
+            "bus.max_event_bytes",
         ),
     ] {
         require(valid, key, "must be within its finite range", violations);

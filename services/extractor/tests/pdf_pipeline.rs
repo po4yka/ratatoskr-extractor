@@ -10,6 +10,7 @@ use extractor_eventing::{
 use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::capture::CaptureCommandJson;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
 use futures_util::stream;
@@ -39,7 +40,7 @@ async fn single_candidate_completion_commits_like_html() -> Result<(), Box<dyn s
         ))?,
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the command did not produce queued work")?;
 
@@ -62,7 +63,7 @@ async fn single_candidate_completion_commits_like_html() -> Result<(), Box<dyn s
     let fetch = pdf_fetch(&run.url, &raw);
     complete_document(
         pool,
-        run.run_id,
+        &run,
         &extraction.document,
         &ir,
         &fetch,
@@ -106,7 +107,7 @@ async fn quality_rejection_records_explicit_class() -> Result<(), Box<dyn std::e
         ))?,
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the command did not produce queued work")?;
 
@@ -224,7 +225,7 @@ async fn claimed_runs_carry_classification() -> Result<(), Box<dyn std::error::E
         "hacker_news",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
     assert_eq!(
@@ -264,7 +265,7 @@ async fn reddit_run_completes_from_json() -> Result<(), Box<dyn std::error::Erro
         "reddit",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -335,7 +336,7 @@ async fn provider_non_json_fails_explicitly() -> Result<(), Box<dyn std::error::
         "reddit",
     )
     .await?;
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -419,7 +420,7 @@ async fn pdf_media_type_takes_direct_path_end_to_end() -> Result<(), Box<dyn std
     let url = server.uri("/report.pdf").replace("127.0.0.1", "localhost");
     queue_direct(pool, &url, "pdf").await?;
     // The worker leases a run before processing it; terminal facts require that state.
-    let run = claim_queued_run(pool, "test-worker", 60)
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the queued run did not lease")?;
 
@@ -491,7 +492,7 @@ async fn pdf_failure_classes_reach_terminal_state() -> Result<(), Box<dyn std::e
         )
         .await?;
         // The worker leases a run before processing it; terminal facts require that state.
-        let run = claim_queued_run(pool, "test-worker", 60)
+        let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
             .await?
             .ok_or("the queued run did not lease")?;
 

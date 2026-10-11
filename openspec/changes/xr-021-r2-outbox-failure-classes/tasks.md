@@ -10,8 +10,8 @@
 
 ## 3. Enqueue-time size guard
 
-- [ ] 3.1 Add failing tests `crates/core/tests/config.rs::bus_max_event_bytes_defaults_and_bounds`, `crates/eventing/tests/completion.rs::an_oversize_document_is_reported_partial_and_no_event_is_enqueued` and the control `a_document_under_the_limit_still_succeeds`. Expected failure today: unknown key under `deny_unknown_fields`, and the document event is always enqueued.
-- [ ] 3.2 Add `bus.max_event_bytes` with validation, carry it on `QueuedRun`, decide status and rows in `complete`, and document the key. Verify: 3.1 green and the existing suites green.
+- [x] 3.1 Add failing tests `crates/core/tests/config.rs::bus_max_event_bytes_defaults_and_bounds`, `crates/eventing/tests/completion.rs::an_oversize_document_is_reported_partial_and_no_event_is_enqueued` and the control `a_document_under_the_limit_still_succeeds`. Expected failure today: unknown key under `deny_unknown_fields`, and the document event is always enqueued.
+- [x] 3.2 Add `bus.max_event_bytes` with validation, carry it on `QueuedRun`, decide status and rows in `complete`, and document the key. Verify: 3.1 green and the existing suites green.
 
 ## 4. Documentation
 

@@ -1,5 +1,6 @@
 //! Capture command through durable completion and acknowledged publication.
 
+use extractor_test_support::MAX_EVENT_BYTES;
 use std::time::Duration;
 
 use extractor_blob_store::BlobStore;
@@ -50,7 +51,7 @@ async fn completed_html_persists_all_candidate_decisions_atomically()
     cancellation.cancel();
     consumer.await??;
 
-    let run = claim_queued_run(database.database.pool(), "test-worker", 60)
+    let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the command did not produce queued work")?;
     let html = bytes::Bytes::from_static(
@@ -90,7 +91,7 @@ async fn completed_html_persists_all_candidate_decisions_atomically()
     };
     complete_document(
         database.database.pool(),
-        run.run_id,
+        &run,
         &document,
         &ir,
         &fetch,
@@ -170,7 +171,7 @@ async fn quality_rejection_persists_evidence_without_document_event()
         &command,
     )
     .await?;
-    let run = claim_queued_run(database.database.pool(), "test-worker", 60)
+    let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the command did not produce queued work")?;
     let html = bytes::Bytes::from_static(

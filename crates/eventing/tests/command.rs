@@ -2,6 +2,7 @@
 
 use extractor_eventing::{Reception, claim_queued_run, consume_capture};
 use extractor_persistence::test_support::TestDatabase;
+use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::capture::CaptureCommandJson;
 use ratatoskr_event_envelope::{EventEnvelope, EventPayload as _};
 use ratatoskr_operation_contracts::{OperationReported, OperationStatus};
@@ -130,7 +131,7 @@ async fn a_blob_capture_queues_a_blob_run() -> Result<(), Box<dyn std::error::Er
         )
     );
 
-    let run = claim_queued_run(database.database.pool(), "test-worker", 60)
+    let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the blob capture did not produce queued work")?;
     assert_eq!(run.url, urn);
