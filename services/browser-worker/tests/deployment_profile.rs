@@ -19,6 +19,10 @@ fn assignments(text: &str) -> Vec<(&str, &str)> {
 }
 
 #[test]
+#[allow(
+    clippy::result_large_err,
+    reason = "Figment Jail fixes the callback error type to figment::Error"
+)]
 fn the_operator_example_loads_through_the_worker_settings() {
     let example = std::fs::read_to_string(EXAMPLE);
     assert!(
