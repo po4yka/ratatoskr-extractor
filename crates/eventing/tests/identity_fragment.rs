@@ -52,7 +52,7 @@ fn fragment_has_no_broad_grants() {
     assert_eq!(
         stanza,
         format!(
-            "{{nkey:permissions:{{publish:{{allow:[{allow}]}}subscribe:{{allow:[\"_INBOX.>\"]}}}}}}"
+            "{{nkey:permissions:{{publish:{{allow:[{allow}]}}subscribe:{{allow:[\"_INBOX_extractor.>\"]}}}}}}"
         )
     );
 }

@@ -47,12 +47,20 @@ impl Harness {
     /// Starts the broker with the shipped fragment and, when `durables` is set, provisions both
     /// streams and the fixed durables as an administrator.
     async fn start(durables: bool) -> Result<Self, Box<dyn std::error::Error>> {
-        let identity = TestIdentity::generate()?;
         let fragment = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../deploy/nats/identity.conf"
         ))?;
-        let broker = AuthorizedBroker::start(&identity.substitute_into(&fragment)?).await?;
+        Self::start_with_fragment(durables, &fragment).await
+    }
+
+    /// Starts the broker with `fragment` as the extractor's stanza.
+    async fn start_with_fragment(
+        durables: bool,
+        fragment: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let identity = TestIdentity::generate()?;
+        let broker = AuthorizedBroker::start(&identity.substitute_into(fragment)?).await?;
         let seed = identity.write_seed(broker.directory(), "extractor")?;
         let administrator = NatsPublisher::connect_with_options(
             broker.url(),
@@ -194,6 +202,63 @@ async fn the_extractor_identity_consumes_and_publishes_without_creating_topology
         (0, 1)
     );
     database.cleanup().await?;
+    Ok(())
+}
+
+/// The stanza with its subscribe grant replaced by exactly `grant`.
+fn subscribing_only_to(fragment: &str, grant: &str) -> String {
+    fragment
+        .lines()
+        .map(|line| {
+            if line.trim_start().starts_with("subscribe:") {
+                format!("        subscribe: {{ allow: [\"{grant}\"] }}")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[tokio::test]
+async fn the_publisher_completes_jetstream_requests_under_its_own_inbox_prefix()
+-> Result<(), Box<dyn std::error::Error>> {
+    // XR-021 CONTRACTS.md R3-01: the identity may subscribe to its own prefix and to nothing else,
+    // so every reply to a JetStream request must arrive on that prefix.
+    let fragment = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/nats/identity.conf"
+    ))?;
+    let narrowed = subscribing_only_to(&fragment, "_INBOX_extractor.>");
+    assert!(narrowed.contains("_INBOX_extractor.>"));
+    let harness = Harness::start_with_fragment(true, &narrowed).await?;
+    let capture = CaptureCommandJson::url("https://example.test/article");
+    harness
+        .admin
+        .publish(CAPTURE_SUBJECT, capture.to_bytes().into())
+        .await?
+        .await?;
+
+    let publisher = harness.extractor().await?;
+    let consumer = publisher
+        .context()
+        .get_consumer_from_stream::<pull::Config, _, _>(CAPTURE_DURABLE, COMMANDS)
+        .await?;
+    let mut batch = consumer
+        .fetch()
+        .max_messages(1)
+        .expires(Duration::from_secs(5))
+        .messages()
+        .await?;
+    let delivery = tokio::time::timeout(Duration::from_secs(10), batch.next())
+        .await?
+        .ok_or("the capture durable delivered nothing")?
+        .map_err(|error| error.to_string())?;
+    assert_eq!(delivery.subject.as_str(), CAPTURE_SUBJECT);
+    delivery
+        .double_ack()
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

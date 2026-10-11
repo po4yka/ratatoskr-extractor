@@ -55,6 +55,14 @@ whitespace and the nkey token aside) used by the authorized-broker tests, and a 
 when a copy diverges. Replace only the public-nkey placeholder in the host file; seeds stay in
 `/etc/ratatoskr/extractor.nkey` and `/etc/ratatoskr/extractor-browser-worker.nkey`.
 
+Each stanza lets its identity subscribe to one inbox prefix and nothing else: `_INBOX_extractor.>`
+for the extractor and `_INBOX_extractor_browser_worker.>` for the worker. Every connection the
+processes open sets that prefix, because a JetStream reply is delivered to the subscription that
+matches the reply subject, and a shared `_INBOX.>` grant would let a compromised service read
+another service's deliveries. A build from before this change cannot complete JetStream requests
+under the new stanzas (the reply is never delivered and the call times out), so reload NATS and
+deploy the services of one snapshot together.
+
 Start order on a fresh broker: reload NATS with the new authorization, start `ratatoskr-edge`, then
 start the extractor and the browser worker. Edge creates the `ratatoskr_commands` and
 `ratatoskr_events` streams, the `ratatoskr_extractor_capture` and `ratatoskr_browser_worker` command

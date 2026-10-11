@@ -11,6 +11,10 @@ use async_nats::jetstream::consumer::{AckPolicy, Consumer, DeliverPolicy, pull};
 
 use crate::{COMMAND_STREAM, EVENTS_STREAM, NatsPublisher};
 
+/// The inbox prefix of every extractor connection (XR-021 CONTRACTS.md R3-01). The identity's
+/// stanza may subscribe to `_INBOX_extractor.>` and nothing else, so no other service can read the
+/// replies this process receives.
+pub(crate) const INBOX_PREFIX: &str = "_INBOX_extractor";
 /// The only capture durable a production process may consume.
 pub const CAPTURE_DURABLE: &str = "ratatoskr_extractor_capture";
 /// Subject filter of the capture durable.

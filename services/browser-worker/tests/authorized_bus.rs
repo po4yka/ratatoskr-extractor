@@ -79,12 +79,20 @@ impl Harness {
     /// Starts the broker with the shipped fragment and, when `topology` is set, provisions both
     /// streams, the fixed durable and the completions bucket as an administrator.
     async fn start(topology: bool) -> Result<Self, Box<dyn std::error::Error>> {
-        let identity = TestIdentity::generate()?;
         let fragment = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../deploy/nats/identity-browser-worker.conf"
         ))?;
-        let broker = AuthorizedBroker::start(&identity.substitute_into(&fragment)?).await?;
+        Self::start_with_fragment(topology, &fragment).await
+    }
+
+    /// Starts the broker with `fragment` as the worker's stanza.
+    async fn start_with_fragment(
+        topology: bool,
+        fragment: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let identity = TestIdentity::generate()?;
+        let broker = AuthorizedBroker::start(&identity.substitute_into(fragment)?).await?;
         let seed = identity.write_seed(broker.directory(), "browser-worker")?;
         let admin_client = async_nats::ConnectOptions::with_user_and_password(
             AuthorizedBroker::ADMIN_USER.to_owned(),
@@ -222,6 +230,51 @@ async fn the_worker_identity_renders_without_creating_topology()
     cancellation.cancel();
     worker.await??;
     drop(harness.broker);
+    Ok(())
+}
+
+/// The stanza with its subscribe grant replaced by exactly `grant`.
+fn subscribing_only_to(fragment: &str, grant: &str) -> String {
+    fragment
+        .lines()
+        .map(|line| {
+            if line.trim_start().starts_with("subscribe:") {
+                format!("        subscribe: {{ allow: [\"{grant}\"] }}")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[tokio::test]
+async fn the_worker_reads_its_kv_bucket_under_its_own_inbox_prefix()
+-> Result<(), Box<dyn std::error::Error>> {
+    // XR-021 CONTRACTS.md R3-01: the identity may subscribe to its own prefix and to nothing else,
+    // so the bucket lookup and the entry read must reply on that prefix.
+    let fragment = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../deploy/nats/identity-browser-worker.conf"
+    ))?;
+    let narrowed = subscribing_only_to(&fragment, "_INBOX_extractor_browser_worker.>");
+    assert!(narrowed.contains("_INBOX_extractor_browser_worker.>"));
+    let harness = Harness::start_with_fragment(true, &narrowed).await?;
+    harness
+        .admin
+        .get_key_value(BUCKET)
+        .await?
+        .put("probe", "marker".into())
+        .await?;
+
+    let worker = jetstream::new(connect(&harness.settings).await?);
+    let bucket = tokio::time::timeout(
+        Duration::from_secs(10),
+        worker.get_key_value(&harness.settings.completions_bucket),
+    )
+    .await??;
+    let entry = tokio::time::timeout(Duration::from_secs(10), bucket.get("probe")).await??;
+    assert_eq!(entry.as_deref(), Some(b"marker".as_slice()));
     Ok(())
 }
 

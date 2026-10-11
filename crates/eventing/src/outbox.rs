@@ -6,6 +6,8 @@ use std::time::Duration;
 use async_nats::jetstream;
 use sqlx::{PgPool, Row as _};
 
+use crate::topology::INBOX_PREFIX;
+
 const EVENT_STREAM: &str = "ratatoskr_events";
 const COMMAND_STREAM: &str = "ratatoskr_commands";
 
@@ -106,7 +108,8 @@ impl NatsPublisher {
     }
 
     /// Connects with caller-supplied authentication, for example an administrator that provisions
-    /// topology the way Edge does.
+    /// topology the way Edge does. The connection always replies on the extractor's own inbox
+    /// prefix, so no caller can build a connection the narrow stanza would starve.
     ///
     /// # Errors
     ///
@@ -115,7 +118,11 @@ impl NatsPublisher {
         url: &str,
         options: async_nats::ConnectOptions,
     ) -> Result<Self, PublishError> {
-        let client = options.connect(url).await.map_err(PublishError::new)?;
+        let client = options
+            .custom_inbox_prefix(INBOX_PREFIX)
+            .connect(url)
+            .await
+            .map_err(PublishError::new)?;
         Ok(Self {
             context: jetstream::new(client.clone()),
             client,

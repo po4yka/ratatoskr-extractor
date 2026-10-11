@@ -20,6 +20,9 @@ pub const COMMAND_STREAM: &str = "ratatoskr_commands";
 pub const DEFAULT_COMPLETIONS_BUCKET: &str = "browser_worker_completions";
 /// Shared fleet event stream that already carries every `evt.*` subject.
 pub const EVENTS_STREAM: &str = "ratatoskr_events";
+/// Inbox prefix of the worker's connection (XR-021 CONTRACTS.md R3-01). The identity's stanza may
+/// subscribe to `_INBOX_extractor_browser_worker.>` and nothing else.
+const INBOX_PREFIX: &str = "_INBOX_extractor_browser_worker";
 
 /// Worker settings resolved from the process environment.
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -80,24 +83,26 @@ impl WorkerSettings {
     }
 }
 
-/// Connects to the bus, authenticating with the deployment nkey when one is configured.
+/// Connects to the bus on the worker's own inbox prefix, authenticating with the deployment nkey
+/// when one is configured. The key-value bucket handle taken from this client replies on the same
+/// prefix.
 ///
 /// # Errors
 ///
 /// Returns [`WorkerError`] when the seed file or the broker is unavailable.
 pub async fn connect(settings: &WorkerSettings) -> Result<async_nats::Client, WorkerError> {
-    match &settings.nkey_seed_path {
+    let options = match &settings.nkey_seed_path {
         Some(path) => {
             let seed = std::fs::read_to_string(path).map_err(infrastructure)?;
             async_nats::ConnectOptions::with_nkey(seed.trim().to_owned())
-                .connect(&settings.nats_url)
-                .await
-                .map_err(infrastructure)
         }
-        None => async_nats::connect(&settings.nats_url)
-            .await
-            .map_err(infrastructure),
-    }
+        None => async_nats::ConnectOptions::new(),
+    };
+    options
+        .custom_inbox_prefix(INBOX_PREFIX)
+        .connect(&settings.nats_url)
+        .await
+        .map_err(infrastructure)
 }
 
 /// Why a render job could not complete.
