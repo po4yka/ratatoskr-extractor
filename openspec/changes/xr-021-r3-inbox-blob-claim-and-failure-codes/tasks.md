@@ -20,7 +20,7 @@
 
 ## 5. Documentation (R3-19)
 
-- [ ] 5.1 Rewrite the README workspace paragraph from the workspace as it is and name the inbox prefix in the README bus identity paragraph. Why no failing test first: documentation over delivered work.
+- [x] 5.1 Rewrite the README workspace paragraph from the workspace as it is and name the inbox prefix in the README bus identity paragraph. Why no failing test first: documentation over delivered work.
 
 ## 6. Gate
 

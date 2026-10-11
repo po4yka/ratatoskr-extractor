@@ -263,7 +263,10 @@ contract wrapper `ContentDocumentExtracted` (the document plus the Document IR `
 
 The extractor and the browser worker each run under a narrow nkey identity and never create bus
 topology: Edge provisions the streams, the fixed durables and the completions bucket, and a process
-that finds one missing refuses to become ready. See `deploy/README.md`.
+that finds one missing refuses to become ready. Each connection replies on its own inbox prefix,
+`_INBOX_extractor` for the extractor and `_INBOX_extractor_browser_worker` for the worker, and the
+identity may subscribe to nothing else, so a compromised service cannot read another service's
+JetStream deliveries. See `deploy/README.md`.
 
 Events are idempotent and correlated with Platform operations. Knowledge consumes accepted documents; it does not depend on extractor database tables.
 
@@ -365,10 +368,12 @@ reporting, and offline legacy shadow comparison are implemented.
 
 ## Workspace integration
 
-The planned `ratatoskr-workspace` topology will pin this repository with compatible Document
-contracts, Knowledge consumers, and integration fixtures. No workspace repository pins exist yet.
-The extractor remains independently buildable and testable, including corpus benchmarks that do not
-require the full system.
+`ratatoskr-workspace` pins this repository as the `repos/extractor` gitlink, lists it in
+`workspace.toml` and `workspace.lock`, and runs its harness checks over it: the port allocation, the
+byte-equal copies of the NATS stanzas in `deploy/nats/identity*.conf`, the JetStream durables, and
+the Edge upstreams. The native cross-service smoke of changeset XR-021 has not run against this
+snapshot yet. The extractor remains independently buildable and testable, including corpus
+benchmarks that do not require the full system.
 
 ## Project status
 
