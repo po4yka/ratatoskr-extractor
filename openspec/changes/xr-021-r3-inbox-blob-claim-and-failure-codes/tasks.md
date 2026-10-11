@@ -15,8 +15,8 @@
 
 ## 4. Browser worker operator example (R2-10 rule 2)
 
-- [ ] 4.1 Add the failing test `services/browser-worker/tests/deployment_profile.rs::the_operator_example_loads_through_the_worker_settings`. Expected failure today: the example file does not exist.
-- [ ] 4.2 Add `deploy/systemd/browser-worker.conf.example` and the "Browser worker" paragraph of `deploy/README.md`. Verify: 4.1 green.
+- [x] 4.1 Add the failing test `services/browser-worker/tests/deployment_profile.rs::the_operator_example_loads_through_the_worker_settings`. Expected failure today: the example file does not exist.
+- [x] 4.2 Add `deploy/systemd/browser-worker.conf.example` and the "Browser worker" paragraph of `deploy/README.md`. Verify: 4.1 green.
 
 ## 5. Documentation (R3-19)
 

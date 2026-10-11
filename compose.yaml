@@ -29,6 +29,8 @@ services:
     volumes:
       - extractor-nats-data:/data
 
+  # Development only: no nkey seed, and the process provisions its own topology. A deployment
+  # runs the worker from `deploy/systemd/browser-worker.conf.example` instead.
   browser-worker:
     image: ratatoskr-browser-worker:dev
     build:

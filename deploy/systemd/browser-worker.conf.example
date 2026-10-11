@@ -1,0 +1,21 @@
+# EnvironmentFile of the browser worker, read by `WorkerSettings::load` (`BROWSER_*`, unknown keys
+# are refused). The worker is a separate process under its own nkey identity,
+# `EXTRACTOR_BROWSER_WORKER` in Platform's `ratatoskr.conf`.
+BROWSER_NATS_URL=nats://127.0.0.1:4222
+# File holding the nkey seed, readable by the worker only. The public key is the one named in the
+# host's `ratatoskr.conf`; the seed never enters this repository.
+BROWSER_NKEY_SEED_PATH=/etc/ratatoskr/extractor-browser-worker.nkey
+# Content-addressed root that the worker owns; the extractor reads rendered DOM through the BlobRef.
+BROWSER_BLOBS_ROOT=/mnt/nvme/ratatoskr/blobs/ratatoskr-extractor-browser-worker
+# The fixed durable and bucket below must exist before the worker starts: ratatoskr-edge provisions
+# the `ratatoskr_browser_worker` durable on `ratatoskr_commands` and the
+# `browser_worker_completions` bucket, and the worker refuses to run (and systemd restarts it) until
+# they do. Never set BROWSER_PROVISION_TOPOLOGY here; it is for an unauthenticated development
+# broker and is refused together with a seed. The compose file under `deploy/browser-worker/` is
+# development only.
+BROWSER_DURABLE_NAME=ratatoskr_browser_worker
+BROWSER_COMPLETIONS_BUCKET=browser_worker_completions
+# Terminal render jobs handled before the process exits so its supervisor restarts it with fresh
+# Chromium. Uncomment BROWSER_CHROME_BIN only when Chromium is not on PATH.
+BROWSER_MAX_JOBS_PER_PROCESS=500
+# BROWSER_CHROME_BIN=/usr/bin/chromium

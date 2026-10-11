@@ -75,6 +75,17 @@ broker and is refused together with an nkey seed. A publish refused by the broke
 client as an error: it appears as a missing acknowledgement, so check the NATS server log for a
 `Publish Violation`.
 
+## Browser worker
+
+The worker is a separate process with its own identity and configuration. `deploy/systemd/browser-
+worker.conf.example` is its `EnvironmentFile`: `BROWSER_NATS_URL`, `BROWSER_NKEY_SEED_PATH`,
+`BROWSER_BLOBS_ROOT`, `BROWSER_DURABLE_NAME`, `BROWSER_COMPLETIONS_BUCKET` and
+`BROWSER_MAX_JOBS_PER_PROCESS`, and a test loads it through the worker's own settings, so a key the
+worker does not know fails the build. It sets no `BROWSER_PROVISION_TOPOLOGY`: Edge provisions the
+`ratatoskr_browser_worker` durable and the `browser_worker_completions` bucket first, and the worker
+refuses to run until they exist. The `browser` profile of `compose.yaml` is for development against
+an unauthenticated broker only. A systemd unit for the worker is not provided yet.
+
 ## Outbox delivery and readiness
 
 A fact row is published, retried forever with backoff, or undeliverable (see "Outbox delivery" in
