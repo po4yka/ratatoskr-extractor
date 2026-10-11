@@ -267,6 +267,33 @@ that finds one missing refuses to become ready. See `deploy/README.md`.
 
 Events are idempotent and correlated with Platform operations. Knowledge consumes accepted documents; it does not depend on extractor database tables.
 
+### Outbox delivery
+
+Every fact leaves through the transactional outbox, and a row ends in exactly one of three ways:
+
+- published: the JetStream acknowledgement arrived and `published_at` is set;
+- retried: any transient failure (broker unreachable, publish refused, acknowledgement timeout)
+  records the attempt and a safe error class and backs off `min(300, 2^attempts)` seconds. A
+  transient failure never dead-letters a row, so an outage of any length ends with the row
+  published;
+- undeliverable: the serialized envelope is larger than the connected server's `max_payload` minus
+  1 KiB, which no retry can fix. The row gets `dead_lettered_at` and `last_error =
+  'payload_too_large'` at once, the pass continues with the next row, and
+  `ratatoskr_extractor_outbox_undeliverable_total{class}` counts it.
+
+The broker limit is 8 MiB, set as `max_payload` in Platform's `ratatoskr.conf`. The extractor also
+refuses to enqueue a `content.document.extracted.v1` whose serialized envelope exceeds
+`bus.max_event_bytes` (default 8000000, accepted 65536 to 8388608): the operation report is then
+`partially_succeeded` with the warning `content.document.not_ingested` and still names the extracted
+document, so the user is not told about a success whose document Knowledge never receives.
+
+`/health/ready` is 503 while the publisher is stuck: the last pass attempted a publish, at least one
+publish failed, and the oldest unpublished row has failed three times or is older than 300 seconds.
+It returns to 200 after a pass that publishes every due row or finds none. The relay never stops and
+never exits because of it, and an undeliverable row never counts. A publish the broker refuses does
+not reach the client as an error: it appears as a missing acknowledgement, so the only place the
+reason shows is a `Publish Violation` line in the NATS server log.
+
 ## Observability
 
 Implemented metrics are:
@@ -278,6 +305,9 @@ ratatoskr_extractor_fetch_bytes_total{representation}
 ratatoskr_fetch_results_total{cache}
 ratatoskr_extractor_commands_total{outcome}
 ratatoskr_extractor_outbox_publications_total{outcome}
+ratatoskr_extractor_outbox_undeliverable_total{class}
+ratatoskr_extractor_outbox_publisher_unhealthy_total{class}
+ratatoskr_extractor_documents_not_ingested_total
 ratatoskr_extractor_runs_total{outcome}
 ratatoskr_extractor_parse_duration_seconds
 ```

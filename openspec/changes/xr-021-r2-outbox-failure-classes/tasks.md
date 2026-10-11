@@ -15,7 +15,7 @@
 
 ## 4. Documentation
 
-- [ ] 4.1 State the three outbox outcomes, the readiness rule, the 8 MiB broker limit and the `Publish Violation` log line in `README.md` and `deploy/README.md`. Why no failing test first: documentation over delivered work.
+- [x] 4.1 State the three outbox outcomes, the readiness rule, the 8 MiB broker limit and the `Publish Violation` log line in `README.md` and `deploy/README.md`. Why no failing test first: documentation over delivered work.
 
 ## 5. Gate
 

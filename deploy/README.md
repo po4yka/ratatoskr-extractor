@@ -67,6 +67,20 @@ broker and is refused together with an nkey seed. A publish refused by the broke
 client as an error: it appears as a missing acknowledgement, so check the NATS server log for a
 `Publish Violation`.
 
+## Outbox delivery and readiness
+
+A fact row is published, retried forever with backoff, or undeliverable (see "Outbox delivery" in
+`README.md`). Only a message larger than the broker accepts is undeliverable: the NATS limit is 8 MiB
+(`max_payload` in `ratatoskr-platform/deploy/nats/ratatoskr.conf`), and the extractor stops enqueueing
+a document event above `RATATOSKR__BUS__MAX_EVENT_BYTES` (default 8000000). A broker outage of any
+length loses nothing.
+
+`/health/ready` turns 503 when the publisher is refused repeatedly: the oldest unpublished row has
+failed three times or is older than 300 seconds. Read `ratatoskr_extractor_outbox_publisher_unhealthy_total`
+and the `last_error` class of the oldest row in `extractor.outbox_events`. A refused publish shows only
+as a missing acknowledgement, so check the NATS server log for a `Publish Violation`; fixing the ACL is
+enough, the relay needs no restart.
+
 ## Telegram blob captures
 
 A capture whose payload names a blob reads the bytes from the Telegram service's blob root,
