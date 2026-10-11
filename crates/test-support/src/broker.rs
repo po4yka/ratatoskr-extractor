@@ -119,6 +119,31 @@ pub struct AuthorizedBroker {
     url: String,
     directory: PathBuf,
     admin_password: String,
+    configuration: Configuration,
+}
+
+/// Everything the generated `broker.conf` is rendered from, kept so the users can be replaced.
+#[derive(Debug)]
+struct Configuration {
+    port: u16,
+    directory: PathBuf,
+    extra: String,
+    admin_password: String,
+}
+
+impl Configuration {
+    fn render(&self, users: &str) -> String {
+        format!(
+            "port: {port}\nhost: 127.0.0.1\n{extra}\njetstream {{\n  store_dir: \"{store}\"\n}}\n\
+             authorization {{\n  users: [\n    {{ user: \"{admin}\", password: \"{password}\", \
+             permissions: {{ publish: \">\", subscribe: \">\" }} }}\n{users}\n  ]\n}}\n",
+            port = self.port,
+            extra = self.extra,
+            store = self.directory.join("jetstream").display(),
+            admin = AuthorizedBroker::ADMIN_USER,
+            password = self.admin_password,
+        )
+    }
 }
 
 impl AuthorizedBroker {
@@ -154,15 +179,14 @@ impl AuthorizedBroker {
         std::fs::create_dir_all(directory.join("jetstream"))?;
         let port = free_port()?;
         let admin_password = uuid::Uuid::now_v7().simple().to_string();
-        let configuration = format!(
-            "port: {port}\nhost: 127.0.0.1\n{extra}\njetstream {{\n  store_dir: \"{store}\"\n}}\n\
-             authorization {{\n  users: [\n    {{ user: \"{admin}\", password: \"{admin_password}\", \
-             permissions: {{ publish: \">\", subscribe: \">\" }} }}\n{users}\n  ]\n}}\n",
-            store = directory.join("jetstream").display(),
-            admin = Self::ADMIN_USER,
-        );
         let configuration_path = directory.join("broker.conf");
-        std::fs::write(&configuration_path, configuration)?;
+        let broker_configuration = Configuration {
+            port,
+            directory: directory.clone(),
+            extra: extra.to_owned(),
+            admin_password: admin_password.clone(),
+        };
+        std::fs::write(&configuration_path, broker_configuration.render(users))?;
         let child = Command::new(server_binary())
             .arg("-c")
             .arg(&configuration_path)
@@ -175,6 +199,7 @@ impl AuthorizedBroker {
             url: format!("nats://127.0.0.1:{port}"),
             directory,
             admin_password,
+            configuration: broker_configuration,
         };
         broker.wait_until_ready(port).await?;
         Ok(broker)
@@ -196,6 +221,30 @@ impl AuthorizedBroker {
     #[must_use]
     pub fn directory(&self) -> &Path {
         &self.directory
+    }
+
+    /// Replaces the permission stanzas of the running broker and makes it reload them, as an
+    /// operator fixing an ACL drift would. Connected clients keep their connection and receive
+    /// the new permissions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrokerError`] when the configuration cannot be written or the signal cannot be
+    /// sent.
+    pub fn reload_users(&self, users: &str) -> Result<(), BrokerError> {
+        std::fs::write(
+            self.directory.join("broker.conf"),
+            self.configuration.render(users),
+        )?;
+        let status = Command::new("kill")
+            .arg("-HUP")
+            .arg(self.child.id().to_string())
+            .status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(BrokerError::NotReady)
+        }
     }
 
     async fn wait_until_ready(&mut self, port: u16) -> Result<(), BrokerError> {

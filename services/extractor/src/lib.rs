@@ -37,6 +37,7 @@ const DRAINING: u8 = 2;
 pub struct RuntimeHealth {
     state: Arc<AtomicU8>,
     dependencies_healthy: Arc<AtomicBool>,
+    publisher_healthy: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -86,6 +87,7 @@ impl RuntimeHealth {
         Self {
             state: Arc::new(AtomicU8::new(STARTING)),
             dependencies_healthy: Arc::new(AtomicBool::new(false)),
+            publisher_healthy: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -101,6 +103,12 @@ impl RuntimeHealth {
         self.dependencies_healthy.store(healthy, Ordering::Release);
     }
 
+    /// Records whether the outbox relay can publish what it holds. It is separate from the
+    /// dependency probe so a healthy database check cannot overwrite a refusing publisher.
+    pub fn mark_publisher_healthy(&self, healthy: bool) {
+        self.publisher_healthy.store(healthy, Ordering::Release);
+    }
+
     /// Starts drain and makes readiness fail.
     pub fn begin_drain(&self) {
         // Ordering: publish drain before new admission observes readiness.
@@ -111,6 +119,7 @@ impl RuntimeHealth {
         // Ordering: pair with startup and drain publication stores.
         self.state.load(Ordering::Acquire) == READY
             && self.dependencies_healthy.load(Ordering::Acquire)
+            && self.publisher_healthy.load(Ordering::Acquire)
     }
 }
 

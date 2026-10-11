@@ -10,8 +10,8 @@ use extractor_core::{
     ExtractorConfig, ParserConfig, PdfConfig, ProvidersConfig, RenderConfig, YoutubeConfig,
 };
 use extractor_eventing::{
-    NatsPublisher, RenderBus, claim_queued_run, run_command_consumer, run_outbox_once,
-    verify_bus_topology,
+    NatsPublisher, OutboxHealth, RenderBus, claim_queued_run, run_command_consumer,
+    run_outbox_once, verify_bus_topology,
 };
 use extractor_persistence::Database;
 use extractor_safe_fetch::SafeFetcher;
@@ -193,6 +193,7 @@ fn spawn_background_loops(
     tasks.spawn(outbox_loop(
         database.pool().clone(),
         publisher.clone(),
+        health.clone(),
         config.bus.poll_interval_ms,
         config.bus.outbox_batch_size,
         background_cancel.child_token(),
@@ -222,15 +223,19 @@ fn spawn_background_loops(
     ));
 }
 
+/// Relays outbox rows. A publisher that keeps being refused withdraws readiness through
+/// `health`; the loop itself never stops because of it and keeps retrying with backoff.
 async fn outbox_loop(
     pool: sqlx::PgPool,
     publisher: NatsPublisher,
+    health: RuntimeHealth,
     poll_interval_ms: u64,
     batch_size: i64,
     cancellation: CancellationToken,
 ) -> Result<(), ProcessError> {
     let mut interval = tokio::time::interval(Duration::from_millis(poll_interval_ms));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut outbox_health = OutboxHealth::new();
     loop {
         tokio::select! {
             biased;
@@ -238,6 +243,9 @@ async fn outbox_loop(
             _ = interval.tick() => {
                 let report = run_outbox_once(&pool, &publisher, "extractor", batch_size).await
                     .map_err(extractor_persistence::PersistenceError::Query)?;
+                let healthy = outbox_health.observe(&pool, &report).await
+                    .map_err(extractor_persistence::PersistenceError::Query)?;
+                health.mark_publisher_healthy(healthy);
                 tracing::debug!(claimed = report.claimed, published = report.published,
                     failed = report.failed, dead_lettered = report.dead_lettered,
                     "outbox pass completed");

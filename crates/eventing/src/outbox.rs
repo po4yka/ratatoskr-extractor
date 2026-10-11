@@ -229,6 +229,104 @@ pub struct OutboxReport {
     pub dead_lettered: usize,
 }
 
+/// Failed attempts of the oldest unpublished row after which a refusing publisher is unhealthy.
+const UNHEALTHY_ATTEMPTS: i32 = 3;
+/// Age in seconds of the oldest unpublished row after which a refusing publisher is unhealthy.
+const UNHEALTHY_AGE_SECONDS: i32 = 300;
+
+/// Whether the relay can currently publish what it holds (XR-021 CONTRACTS.md R2-03).
+///
+/// The verdict is unhealthy when a pass attempted a publish, at least one publish failed, and the
+/// oldest unpublished publishable row has failed at least three times or is older than 300
+/// seconds. It turns healthy again after a pass that publishes every due row, or when nothing is
+/// left unpublished. A row marked undeliverable is outside the retry set and never counts. The
+/// verdict only informs readiness and a counter: the relay keeps retrying whatever it says.
+#[derive(Debug, Clone, Copy)]
+pub struct OutboxHealth {
+    healthy: bool,
+}
+
+impl OutboxHealth {
+    /// A relay that has not failed yet.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { healthy: true }
+    }
+
+    /// The verdict after the latest observed pass.
+    #[must_use]
+    pub const fn is_healthy(&self) -> bool {
+        self.healthy
+    }
+
+    /// Folds one finished pass into the verdict and returns it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `sqlx::Error` when the oldest-row query fails.
+    pub async fn observe(
+        &mut self,
+        pool: &PgPool,
+        report: &OutboxReport,
+    ) -> Result<bool, sqlx::Error> {
+        let head = oldest_unpublished(pool).await?;
+        let healthy = if report.failed > 0 {
+            !head.as_ref().is_some_and(|head| head.stuck)
+        } else if report.claimed == 0 {
+            // Nothing was due. A row waiting out its backoff says nothing about the publisher,
+            // so only an empty queue is evidence of health.
+            head.is_none() || self.healthy
+        } else {
+            true
+        };
+        if self.healthy && !healthy {
+            let class = head
+                .and_then(|head| head.last_error)
+                .unwrap_or_else(|| "publish_failed".to_owned());
+            tracing::error!(%class, "outbox publisher is unhealthy; readiness is withdrawn");
+            metrics::counter!("ratatoskr_extractor_outbox_publisher_unhealthy_total", "class" => class)
+                .increment(1);
+        }
+        self.healthy = healthy;
+        Ok(healthy)
+    }
+}
+
+/// The oldest row still in the retry set and whether it is stuck.
+struct OldestUnpublished {
+    stuck: bool,
+    last_error: Option<String>,
+}
+
+async fn oldest_unpublished(pool: &PgPool) -> Result<Option<OldestUnpublished>, sqlx::Error> {
+    let row = sqlx::query(
+        "select attempts >= $1
+                or enqueued_at < clock_timestamp() - make_interval(secs => $2) as stuck,
+                last_error
+           from extractor.outbox_events
+          where published_at is null and dead_lettered_at is null
+          order by enqueued_at, outbox_id
+          limit 1",
+    )
+    .bind(UNHEALTHY_ATTEMPTS)
+    .bind(f64::from(UNHEALTHY_AGE_SECONDS))
+    .fetch_optional(pool)
+    .await?;
+    row.map(|row| {
+        Ok(OldestUnpublished {
+            stuck: row.try_get("stuck")?,
+            last_error: row.try_get("last_error")?,
+        })
+    })
+    .transpose()
+}
+
+impl Default for OutboxHealth {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Claims and attempts one finite batch.
 ///
 /// A transient failure backs the row off and never gives up on it; only a permanent failure marks

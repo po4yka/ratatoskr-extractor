@@ -23,7 +23,8 @@ pub use completion::{
 };
 pub use consumer::{ConsumerReport, run_command_consumer};
 pub use outbox::{
-    NatsPublisher, OutboxReport, PublishError, Publisher, ensure_event_stream_on, run_outbox_once,
+    NatsPublisher, OutboxHealth, OutboxReport, PublishError, Publisher, ensure_event_stream_on,
+    run_outbox_once,
 };
 pub use render::{
     RenderBudget, RenderBus, RenderOutcome, RenderRequestError, consume_render_budget,

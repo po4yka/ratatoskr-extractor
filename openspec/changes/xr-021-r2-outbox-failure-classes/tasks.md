@@ -5,8 +5,8 @@
 
 ## 2. Publisher health reaches readiness
 
-- [ ] 2.1 Add failing tests `crates/eventing/tests/outbox.rs::repeated_refusals_mark_the_publisher_unhealthy_until_a_clean_pass` and `services/extractor/tests/admin.rs::readiness_follows_the_outbox_publisher`. Expected failure today: no `OutboxHealth` verdict exists and the service stays ready against a broker that refuses the publish.
-- [ ] 2.2 Add `OutboxHealth`, feed it from `outbox_loop` into `RuntimeHealth`, and count verdict flips. Verify: 2.1 green.
+- [x] 2.1 Add failing tests `crates/eventing/tests/outbox.rs::repeated_refusals_mark_the_publisher_unhealthy_until_a_clean_pass` and `services/extractor/tests/admin.rs::readiness_follows_the_outbox_publisher`. Expected failure today: no `OutboxHealth` verdict exists and the service stays ready against a broker that refuses the publish.
+- [x] 2.2 Add `OutboxHealth`, feed it from `outbox_loop` into `RuntimeHealth`, and count verdict flips. Verify: 2.1 green.
 
 ## 3. Enqueue-time size guard
 

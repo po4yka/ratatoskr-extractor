@@ -4,7 +4,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use extractor_eventing::{
-    NatsPublisher, PublishError, Publisher, consume_capture, run_outbox_once,
+    NatsPublisher, OutboxHealth, PublishError, Publisher, consume_capture, run_outbox_once,
 };
 use extractor_persistence::test_support::TestDatabase;
 use extractor_test_support::broker::AuthorizedBroker;
@@ -63,8 +63,11 @@ impl Publisher for OversizeFirst {
 }
 
 /// Queues one outbox row per capture command and returns once all of them exist.
-async fn queue_rows(pool: &PgPool, count: usize) -> Result<(), Box<dyn std::error::Error>> {
-    for index in 0..count {
+async fn queue_rows(
+    pool: &PgPool,
+    indexes: std::ops::Range<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for index in indexes {
         let command = CaptureCommandJson::url(&format!("https://example.test/article-{index}"))
             .with_idempotency(&format!("capture-outbox-class-{index}"))
             .to_bytes();
@@ -91,7 +94,7 @@ async fn due_pass<P: Publisher>(
 async fn transient_failures_never_dead_letter() -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
     let pool = database.database.pool();
-    queue_rows(pool, 1).await?;
+    queue_rows(pool, 0..1).await?;
 
     for pass in 1..=30 {
         let report = due_pass(pool, &RefusingPublisher).await?;
@@ -120,12 +123,87 @@ async fn transient_failures_never_dead_letter() -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+/// One pass followed by the health observation of that pass.
+async fn observed_pass<P: Publisher>(
+    pool: &PgPool,
+    health: &mut OutboxHealth,
+    publisher: &P,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let report = due_pass(pool, publisher).await?;
+    Ok(health.observe(pool, &report).await?)
+}
+
+#[tokio::test]
+async fn repeated_refusals_mark_the_publisher_unhealthy_until_a_clean_pass()
+-> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    let mut health = OutboxHealth::new();
+    assert!(health.is_healthy());
+
+    // An empty pass finds nothing to publish.
+    let report = run_outbox_once(pool, &RefusingPublisher, "test", 10).await?;
+    assert!(health.observe(pool, &report).await?);
+
+    queue_rows(pool, 0..1).await?;
+    // One and two refused attempts are a hiccup; the third is a stuck publisher.
+    assert!(observed_pass(pool, &mut health, &RefusingPublisher).await?);
+    assert!(observed_pass(pool, &mut health, &RefusingPublisher).await?);
+    assert!(!observed_pass(pool, &mut health, &RefusingPublisher).await?);
+    assert!(!health.is_healthy());
+
+    // The row is in backoff, so the next poll finds nothing due. That says nothing about the
+    // publisher, so the verdict must not flap back to healthy between attempts.
+    let idle = run_outbox_once(pool, &RefusingPublisher, "test", 10).await?;
+    assert_eq!(idle.claimed, 0);
+    assert!(!health.observe(pool, &idle).await?);
+
+    // A pass that publishes every due row clears it.
+    assert!(observed_pass(pool, &mut health, &AcceptingPublisher).await?);
+    assert!(health.is_healthy());
+
+    // Nothing unpublished at all is healthy as well.
+    let report = run_outbox_once(pool, &RefusingPublisher, "test", 10).await?;
+    assert!(health.observe(pool, &report).await?);
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_old_head_row_makes_a_first_refusal_unhealthy_and_undeliverable_rows_never_do()
+-> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    let mut health = OutboxHealth::new();
+    queue_rows(pool, 0..1).await?;
+    sqlx::query("update extractor.outbox_events set enqueued_at = now() - interval '301 seconds'")
+        .execute(pool)
+        .await?;
+    assert!(!observed_pass(pool, &mut health, &RefusingPublisher).await?);
+    assert!(observed_pass(pool, &mut health, &AcceptingPublisher).await?);
+
+    // A row classed undeliverable is out of the retry set, so it cannot hold the verdict down,
+    // however many attempts it consumed.
+    queue_rows(pool, 1..2).await?;
+    sqlx::query("update extractor.outbox_events set attempts = 5 where published_at is null")
+        .execute(pool)
+        .await?;
+    let publisher = OversizeFirst {
+        calls: AtomicUsize::new(0),
+    };
+    let report = due_pass(pool, &publisher).await?;
+    assert_eq!(report.dead_lettered, 1);
+    assert!(health.observe(pool, &report).await?);
+    database.cleanup().await?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn an_oversize_row_is_undeliverable_at_once_and_does_not_block_later_rows()
 -> Result<(), Box<dyn std::error::Error>> {
     let database = TestDatabase::create().await?;
     let pool = database.database.pool();
-    queue_rows(pool, 2).await?;
+    queue_rows(pool, 0..2).await?;
 
     let publisher = OversizeFirst {
         calls: AtomicUsize::new(0),
