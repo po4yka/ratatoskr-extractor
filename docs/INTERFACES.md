@@ -16,7 +16,17 @@ SHA-256 and length against the reference, and copies them into the extractor's o
 `application/pdf` is extracted. The source address is `urn:ratatoskr:blob:sha256:<hex>`, the host is
 `ratatoskr-telegram`, no fetch happens, and the run records no `extractor.fetches` row. Failure
 classes for a blob run are `blob_owner`, `blob_missing`, `blob_mismatch`, `blob_unreadable`,
-`unsupported_media`, `pdf_encrypted`, `pdf_no_text_layer` and `parse`.
+`unsupported_media`, `pdf_encrypted`, `pdf_no_text_layer` and `parse`. The claim (owner, media type
+and length) belongs to the run that its command queued, so every run is verified against its own
+command and never against an earlier capture of the same digest.
+
+A failed run reports one of five public codes in the error of its operation report, chosen from the
+run's failure class: `content.extraction.no_text_layer` (`pdf_no_text_layer`),
+`content.extraction.encrypted` (`pdf_encrypted`), `content.extraction.unsupported_media`
+(`unsupported_media`), `content.extraction.source_unavailable` (`blob_owner`, `blob_missing`,
+`blob_unreadable`, `blob_mismatch`) and `content.extraction.failed` (every other class, including
+`parse`). The class names stay operator-only: they live in `extractor.extraction_runs.last_error_class`
+and the logs, never in the report.
 
 ## Outbound
 
@@ -35,7 +45,9 @@ subjects are not registered contracts.
 
 The extractor holds one nkey identity that may consume `ratatoskr_extractor_capture`, read
 `ratatoskr_extractor_render_awaits`, and publish the two facts above plus the render command. It
-creates no stream, consumer or bucket; Edge provisions them (`deploy/README.md`).
+creates no stream, consumer or bucket; Edge provisions them (`deploy/README.md`). Its connections reply
+on the inbox prefix `_INBOX_extractor`, and the browser worker's on `_INBOX_extractor_browser_worker`;
+each stanza subscribes to that prefix and nothing else.
 
 Render concurrency is limited to one in-flight request per process:
 `ratatoskr_extractor_render_awaits` is a single shared durable with no acknowledgement, so every

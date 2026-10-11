@@ -3,7 +3,7 @@
 use extractor_blob_store::BlobStore;
 use extractor_document_ir::{CandidateDecision, QualityMetrics, QualityReason};
 use extractor_eventing::{
-    CompletedFetch, Completion, claim_queued_run, complete_document, consume_capture,
+    CompletedFetch, Completion, claim_queued_run, complete_document, consume_capture, fail_run,
     store_document_ir,
 };
 use extractor_persistence::test_support::TestDatabase;
@@ -268,6 +268,114 @@ async fn reported_operations(
         }
     }
     Ok(terminal)
+}
+
+/// XR-021 CONTRACTS.md R3-14 rule 2: the public code and safe message of each closed failure
+/// class, the `retryable` value the caller passes, and the class names that stay operator-only.
+const PUBLIC_FAILURES: [(&str, bool, &str, &str); 11] = [
+    (
+        "pdf_no_text_layer",
+        false,
+        "content.extraction.no_text_layer",
+        "The PDF has no text layer; scanned or image-only PDFs are not supported yet.",
+    ),
+    (
+        "pdf_encrypted",
+        false,
+        "content.extraction.encrypted",
+        "The PDF is encrypted.",
+    ),
+    (
+        "unsupported_media",
+        false,
+        "content.extraction.unsupported_media",
+        "This file type cannot be extracted.",
+    ),
+    (
+        "blob_owner",
+        false,
+        "content.extraction.source_unavailable",
+        "The uploaded file could not be read.",
+    ),
+    (
+        "blob_missing",
+        false,
+        "content.extraction.source_unavailable",
+        "The uploaded file could not be read.",
+    ),
+    (
+        "blob_unreadable",
+        false,
+        "content.extraction.source_unavailable",
+        "The uploaded file could not be read.",
+    ),
+    (
+        "blob_mismatch",
+        false,
+        "content.extraction.source_unavailable",
+        "The uploaded file could not be read.",
+    ),
+    (
+        "parse",
+        false,
+        "content.extraction.failed",
+        "The document could not be extracted.",
+    ),
+    (
+        "fetch",
+        true,
+        "content.extraction.failed",
+        "The document could not be extracted.",
+    ),
+    (
+        "artifact",
+        false,
+        "content.extraction.failed",
+        "The document could not be extracted.",
+    ),
+    (
+        "a_class_nobody_defined",
+        false,
+        "content.extraction.failed",
+        "The document could not be extracted.",
+    ),
+];
+
+#[tokio::test]
+async fn each_failure_class_reports_its_public_code() -> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    for (class, retryable, code, message) in PUBLIC_FAILURES {
+        let capture = CaptureCommandJson::url("https://example.test/article");
+        consume_capture(pool, SUBJECT, &capture.to_bytes()).await?;
+        let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
+            .await?
+            .ok_or("the command did not produce queued work")?;
+
+        assert_eq!(
+            fail_run(pool, run.run_id, class, retryable, &[]).await?,
+            Completion::Applied
+        );
+
+        let reports = reported_operations(pool).await?;
+        let report = reports
+            .iter()
+            .find(|report| report.operation_id.0 == capture.operation_id)
+            .ok_or("the failed run enqueued no terminal report")?;
+        let error = report
+            .error
+            .as_ref()
+            .ok_or("a failed report carries an error")?;
+        assert_eq!(error.code.as_str(), code, "code for class {class}");
+        assert_eq!(error.message.as_str(), message, "message for class {class}");
+        assert_eq!(error.retryable, retryable, "retryable for class {class}");
+        assert!(
+            !error.message.as_str().contains(class),
+            "the message must not name the class {class}"
+        );
+    }
+    database.cleanup().await?;
+    Ok(())
 }
 
 #[tokio::test]

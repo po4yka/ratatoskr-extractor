@@ -51,24 +51,49 @@ pub async fn fail_run(
         return Ok(Completion::Duplicate);
     };
     terminal::insert_resolution_steps(&mut transaction, run_id, steps).await?;
-    enqueue_failed_report(&mut transaction, &context, retryable).await?;
+    enqueue_failed_report(&mut transaction, &context, failure_class, retryable).await?;
     transaction.commit().await?;
     Ok(Completion::Applied)
+}
+
+/// The public code and safe message that a failure class reports (XR-021 CONTRACTS.md R3-14
+/// rule 2). The closed classes of `docs/INTERFACES.md` map to five codes; every other class,
+/// including one this function has never heard of, reports the generic failure, so the class name
+/// stays operator-only in the run row and the logs.
+fn public_failure(failure_class: &str) -> Result<(ErrorCode, SafeMessage), ConsumeError> {
+    let (code, message) = match failure_class {
+        "pdf_no_text_layer" => (
+            "content.extraction.no_text_layer",
+            "The PDF has no text layer; scanned or image-only PDFs are not supported yet.",
+        ),
+        "pdf_encrypted" => ("content.extraction.encrypted", "The PDF is encrypted."),
+        "unsupported_media" => (
+            "content.extraction.unsupported_media",
+            "This file type cannot be extracted.",
+        ),
+        "blob_owner" | "blob_missing" | "blob_unreadable" | "blob_mismatch" => (
+            "content.extraction.source_unavailable",
+            "The uploaded file could not be read.",
+        ),
+        _ => (
+            "content.extraction.failed",
+            "The document could not be extracted.",
+        ),
+    };
+    Ok((ErrorCode::parse(code)?, SafeMessage::parse(message)?))
 }
 
 async fn enqueue_failed_report(
     transaction: &mut PgTransaction<'_>,
     context: &CompletionContext,
+    failure_class: &str,
     retryable: bool,
 ) -> Result<(), ConsumeError> {
     let operation_id = OperationId(context.operation);
     let correlation_id = EntityRef::parse(&context.correlation)?;
     let tenant_id = TenantRef::parse(&format!("user:{}", context.owner))?;
-    let mut error = ErrorEnvelope::new(
-        ErrorCode::parse("content.extraction.failed")?,
-        SafeMessage::parse("The document could not be extracted.")?,
-        retryable,
-    );
+    let (code, message) = public_failure(failure_class)?;
+    let mut error = ErrorEnvelope::new(code, message, retryable);
     error.correlation_id = Some(correlation_id.clone());
     let mut envelope = EventEnvelope {
         event_id: EventId::new_v7(),
@@ -348,7 +373,7 @@ async fn reject(
     insert_artifact(&mut transaction, run_id, "raw_source", raw_blob, raw_length).await?;
     terminal::insert_candidates(&mut transaction, run_id, candidates).await?;
     terminal::insert_resolution_steps(&mut transaction, run_id, steps).await?;
-    enqueue_failed_report(&mut transaction, &context, false).await?;
+    enqueue_failed_report(&mut transaction, &context, failure_class, false).await?;
     transaction.commit().await?;
     Ok(Completion::Applied)
 }

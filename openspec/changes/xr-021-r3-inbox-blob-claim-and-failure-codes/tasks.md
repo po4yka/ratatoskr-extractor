@@ -10,8 +10,8 @@
 
 ## 3. Public failure codes (R3-14)
 
-- [ ] 3.1 Add failing tests `crates/eventing/tests/completion.rs::each_failure_class_reports_its_public_code` and the end-to-end assertion in `services/extractor/tests/blob_pdf_pipeline.rs::blob_pdf_without_text_layer_records_pdf_no_text_layer`. Expected failure today: every failed report carries `content.extraction.failed`.
-- [ ] 3.2 Add `public_failure(class)` beside `enqueue_failed_report`, make the latter take the class, and document the five codes in `docs/INTERFACES.md`. Verify: 3.1 green.
+- [x] 3.1 Add failing tests `crates/eventing/tests/completion.rs::each_failure_class_reports_its_public_code` and the end-to-end assertion in `services/extractor/tests/blob_pdf_pipeline.rs::blob_pdf_without_text_layer_records_pdf_no_text_layer`. Expected failure today: every failed report carries `content.extraction.failed`.
+- [x] 3.2 Add `public_failure(class)` beside `enqueue_failed_report`, make the latter take the class, and document the five codes in `docs/INTERFACES.md`. Verify: 3.1 green.
 
 ## 4. Browser worker operator example (R2-10 rule 2)
 

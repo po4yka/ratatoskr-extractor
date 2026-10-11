@@ -373,6 +373,20 @@ async fn blob_pdf_without_text_layer_records_pdf_no_text_layer()
         (1, 0, 0),
         "the raw source is kept as evidence, no fetch row exists, and no document fact is published"
     );
+    // The user learns why through the public code, not through the operator-only class name.
+    let report: serde_json::Value = sqlx::query_scalar(
+        "select payload from extractor.outbox_events
+          where subject = 'evt.platform.operation.reported.v1'
+            and payload->'payload'->>'status' = 'failed'",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(
+        report
+            .pointer("/payload/error/code")
+            .and_then(serde_json::Value::as_str),
+        Some("content.extraction.no_text_layer")
+    );
     fixture.database.cleanup().await?;
     Ok(())
 }
