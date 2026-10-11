@@ -126,7 +126,7 @@ async fn readiness_follows_the_outbox_publisher() -> Result<(), Box<dyn std::err
     wait_for_status(address, "/health/ready", 200, Duration::from_secs(10)).await?;
 
     // Three refused attempts of the queued row, each waiting out the acknowledgement deadline.
-    wait_for_status(address, "/health/ready", 503, Duration::from_secs(60)).await?;
+    wait_for_status(address, "/health/ready", 503, Duration::from_mins(1)).await?;
     let (_, metrics) = http_get(address, "/metrics").await?;
     assert!(
         metrics.contains("ratatoskr_extractor_outbox_publisher_unhealthy_total"),
@@ -140,7 +140,7 @@ async fn readiness_follows_the_outbox_publisher() -> Result<(), Box<dyn std::err
 
     // The operator fixes the ACL; the relay, which never stopped, delivers on its next attempt.
     broker.reload_users(&identity.substitute_into(IDENTITY)?)?;
-    wait_for_status(address, "/health/ready", 200, Duration::from_secs(60)).await?;
+    wait_for_status(address, "/health/ready", 200, Duration::from_mins(1)).await?;
     let published: bool =
         sqlx::query_scalar("select published_at is not null from extractor.outbox_events")
             .fetch_one(pool)
