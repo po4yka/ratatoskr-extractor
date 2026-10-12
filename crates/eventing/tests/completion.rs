@@ -1,7 +1,7 @@
 //! Atomic successful extraction completion.
 
 use extractor_blob_store::BlobStore;
-use extractor_document_ir::{CandidateDecision, QualityMetrics, QualityReason};
+use extractor_document_ir::{CandidateDecision, QualityMetrics, QualityReason, stable_document_id};
 use extractor_eventing::{
     CompletedFetch, Completion, claim_queued_run, complete_document, consume_capture, fail_run,
     store_document_ir,
@@ -15,7 +15,7 @@ use ratatoskr_document_contracts::{
 };
 use ratatoskr_event_envelope::EventEnvelope;
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 use ratatoskr_operation_contracts::{OperationReported, OperationStatus};
 use sha2::{Digest as _, Sha256};
@@ -35,9 +35,9 @@ async fn completed_document_and_report_commit_with_one_run()
     let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the command did not produce queued work")?;
-    let (run_id, document_id) = (run.run_id, run.document_id.0);
+    let run_id = run.run_id;
     let source = blob_ref("text/html", 17, 'a')?;
-    let document = document(source.clone(), DocumentId(document_id))?;
+    let document = document(source.clone(), run.owner)?;
     let root = TemporaryBlobRoot::create().await?;
     let store = BlobStore::new(root.path());
     let ir_blob = store_document_ir(&store, &document).await?;
@@ -112,9 +112,9 @@ async fn document_event_payload_is_the_contract_type() -> Result<(), Box<dyn std
     let run = claim_queued_run(database.database.pool(), "test-worker", 60, MAX_EVENT_BYTES)
         .await?
         .ok_or("the command did not produce queued work")?;
-    let document_id = run.document_id.0;
     let source = blob_ref("text/html", 17, 'a')?;
-    let document = document(source.clone(), DocumentId(document_id))?;
+    let document = document(source.clone(), run.owner)?;
+    let document_id = document.document_id.0;
     let root = TemporaryBlobRoot::create().await?;
     let store = BlobStore::new(root.path());
     let ir_blob = store_document_ir(&store, &document).await?;
@@ -177,6 +177,128 @@ async fn document_event_payload_is_the_contract_type() -> Result<(), Box<dyn std
     Ok(())
 }
 
+#[tokio::test]
+async fn a_claimed_run_exposes_the_owner_and_no_document_id()
+-> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    let capture = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-owner-only");
+    consume_capture(pool, SUBJECT, &capture.to_bytes()).await?;
+    let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
+        .await?
+        .ok_or("the command did not produce queued work")?;
+
+    assert_eq!(run.owner, UserId(capture.tenant_user));
+    let identity_columns: i64 = sqlx::query_scalar(
+        "select count(*) from information_schema.columns
+          where table_schema = 'extractor' and table_name = 'extraction_runs'
+            and column_name = 'document_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(
+        identity_columns, 0,
+        "a run must not carry a document identity"
+    );
+    database.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn two_operations_over_one_digest_share_one_document()
+-> Result<(), Box<dyn std::error::Error>> {
+    let database = TestDatabase::create().await?;
+    let pool = database.database.pool();
+    let first = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-share-one");
+    let mut second = CaptureCommandJson::url("https://example.test/article")
+        .with_idempotency("capture-share-two");
+    second.tenant_user = first.tenant_user;
+    for capture in [&first, &second] {
+        consume_capture(pool, SUBJECT, &capture.to_bytes()).await?;
+    }
+    let source = blob_ref("text/html", 17, 'a')?;
+    let root = TemporaryBlobRoot::create().await?;
+    let store = BlobStore::new(root.path());
+    for _ in 0..2 {
+        let run = claim_queued_run(pool, "test-worker", 60, MAX_EVENT_BYTES)
+            .await?
+            .ok_or("the command did not produce queued work")?;
+        let document = document(source.clone(), run.owner)?;
+        let ir_blob = store_document_ir(&store, &document).await?;
+        let fetch = CompletedFetch {
+            final_url: "https://example.test/article",
+            http_status: 200,
+            media_type: "text/html",
+            wire_bytes: 17,
+            decoded_bytes: 17,
+            attempts: 1,
+            cache_outcome: "fresh",
+            etag: None,
+            last_modified: None,
+            raw_blob: &source,
+        };
+        assert_eq!(
+            complete_document(
+                pool,
+                &run,
+                &document,
+                &ir_blob,
+                &fetch,
+                &candidate_decisions(),
+                &[],
+            )
+            .await?,
+            Completion::Applied
+        );
+    }
+
+    let payloads: Vec<serde_json::Value> = sqlx::query_scalar(
+        "select payload from extractor.outbox_events
+          where subject = 'evt.content.document.extracted.v1'",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut events = Vec::new();
+    for payload in payloads {
+        let envelope: EventEnvelope = serde_json::from_value(payload)?;
+        let fact = envelope.payload_as::<ContentDocumentExtracted>()?;
+        events.push((envelope.event_id, fact.document));
+    }
+    let [
+        (first_event, first_document),
+        (second_event, second_document),
+    ] = events.as_slice()
+    else {
+        return Err(format!("expected two document events, found {}", events.len()).into());
+    };
+    assert_ne!(
+        first_event, second_event,
+        "each operation has its own event"
+    );
+    assert_eq!(first_document.document_id, second_document.document_id);
+    assert_eq!(
+        first_document.content_digest,
+        second_document.content_digest
+    );
+
+    let reports = reported_operations(pool).await?;
+    assert_eq!(reports.len(), 2, "each operation reports on its own");
+    let mut operations: Vec<_> = reports.iter().map(|report| report.operation_id.0).collect();
+    operations.sort();
+    operations.dedup();
+    assert_eq!(operations.len(), 2);
+    for report in &reports {
+        let [result] = report.results.as_slice() else {
+            return Err("a report must name the one extracted document".into());
+        };
+        assert_eq!(result.target, first_document.document_id.as_entity_ref());
+    }
+    database.cleanup().await?;
+    Ok(())
+}
+
 /// The warning an oversize document leaves on an otherwise successful operation.
 const NOT_INGESTED_MESSAGE: &str =
     "The document was extracted, but it is too large to add to the library.";
@@ -213,7 +335,7 @@ async fn complete_large_document(
     let source = blob_ref("text/html", 17, 'a')?;
     let document = document_with_text(
         source.clone(),
-        run.document_id,
+        run.owner,
         &"a long paragraph ".repeat(LARGE_TEXT_BYTES / 17),
     )?;
     let root = TemporaryBlobRoot::create().await?;
@@ -484,16 +606,11 @@ async fn verify_completion(
     document: &Document,
     ir_blob: &BlobRef,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let row =
-        sqlx::query("select status, document_id from extractor.extraction_runs where run_id = $1")
-            .bind(run_id)
-            .fetch_one(pool)
-            .await?;
+    let row = sqlx::query("select status from extractor.extraction_runs where run_id = $1")
+        .bind(run_id)
+        .fetch_one(pool)
+        .await?;
     assert_eq!(row.try_get::<String, _>("status")?, "succeeded");
-    assert_eq!(
-        row.try_get::<uuid::Uuid, _>("document_id")?.to_string(),
-        document.document_id.to_string(),
-    );
     let artifacts: i64 = sqlx::query_scalar(
         "select count(*) from extractor.artifacts where run_id = $1 and kind = 'document_ir'",
     )
@@ -538,16 +655,13 @@ async fn verify_completion(
     Ok(())
 }
 
-fn document(
-    source_blob: BlobRef,
-    document_id: DocumentId,
-) -> Result<Document, Box<dyn std::error::Error>> {
-    document_with_text(source_blob, document_id, "One document.")
+fn document(source_blob: BlobRef, owner: UserId) -> Result<Document, Box<dyn std::error::Error>> {
+    document_with_text(source_blob, owner, "One document.")
 }
 
 fn document_with_text(
     source_blob: BlobRef,
-    document_id: DocumentId,
+    owner: UserId,
     text: &str,
 ) -> Result<Document, Box<dyn std::error::Error>> {
     let blocks = vec![DocumentBlock::Paragraph {
@@ -558,13 +672,14 @@ fn document_with_text(
         "{:x}",
         Sha256::digest(ratatoskr_identifiers::canonical_json(&blocks)?.as_bytes())
     );
+    let content_digest = ContentDigest {
+        algorithm: DigestAlgorithm::Sha256,
+        hex: DigestHex::parse(&digest)?,
+    };
     Ok(Document {
-        document_id,
+        document_id: stable_document_id(owner, &content_digest),
         source_address: DocumentAddress::parse("https://example.test/article")?,
-        content_digest: ContentDigest {
-            algorithm: DigestAlgorithm::Sha256,
-            hex: DigestHex::parse(&digest)?,
-        },
+        content_digest,
         title: Some("Article".to_owned()),
         language: None,
         blocks,

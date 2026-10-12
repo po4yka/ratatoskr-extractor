@@ -7,10 +7,10 @@ use extractor_youtube::{
 };
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock, LanguageTag};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
-const DOCUMENT_ID: &str = "018f0000-0000-7000-8000-000000000042";
+const OWNER: &str = "018f0000-0000-7000-8000-000000000100";
 const SOURCE_ADDRESS: &str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 
 fn blob_ref(length: usize) -> Result<BlobRef, Box<dyn std::error::Error>> {
@@ -67,7 +67,7 @@ fn input_in<'a>(
     language: &'a str,
 ) -> Result<TranscriptInput<'a>, Box<dyn std::error::Error>> {
     Ok(TranscriptInput {
-        document_id: DocumentId::parse(DOCUMENT_ID)?,
+        owner: UserId::parse(OWNER)?,
         source_address: DocumentAddress::parse(SOURCE_ADDRESS)?,
         source_blob: blob.clone(),
         meta,

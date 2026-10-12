@@ -57,7 +57,7 @@ pub fn from_transcript(
         ExtractionStrategy::parse(YOUTUBE_STRATEGY).map_err(|_| YoutubeError::InvalidIdentity)?;
     let language = LanguageTag::parse(input.language).map_err(|_| YoutubeError::InvalidIdentity)?;
     let document = extractor_document_ir::assemble_document(
-        input.document_id,
+        input.owner,
         input.source_address,
         &input.source_blob,
         &strategy,

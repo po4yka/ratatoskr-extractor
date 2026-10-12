@@ -3,7 +3,7 @@
 use extractor_document_ir::{DocumentIrError, HtmlDocumentInput, ParseLimits, from_html};
 use ratatoskr_document_contracts::DocumentAddress;
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 struct Case {
@@ -51,7 +51,7 @@ fn calibration_cases_keep_expected_winners_and_score_ranges()
 fn assert_case(case: &Case) -> Result<(), Box<dyn std::error::Error>> {
     let result = from_html(
         HtmlDocumentInput {
-            document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000007")?,
+            owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
             source_address: DocumentAddress::parse("https://example.com/corpus")?,
             source_blob: blob_ref(case.html.len())?,
             bytes: case.html,

@@ -105,12 +105,12 @@ pub(crate) async fn resolve_external_article(
         max_input_bytes: parser.max_input_bytes,
         max_dom_nodes: parser.max_dom_nodes,
     };
-    let document_id = run.document_id;
+    let owner = run.owner;
     let parse_started = std::time::Instant::now();
     let parsed = tokio::task::spawn_blocking(move || {
         from_html(
             HtmlDocumentInput {
-                document_id,
+                owner,
                 source_address: address,
                 source_blob: raw,
                 bytes: &bytes,
@@ -240,12 +240,12 @@ pub(crate) async fn fallback_to_generic_html(
         max_input_bytes: parser.max_input_bytes,
         max_dom_nodes: parser.max_dom_nodes,
     };
-    let document_id = run.document_id;
+    let owner = run.owner;
     let parse_started = std::time::Instant::now();
     let parsed = tokio::task::spawn_blocking(move || {
         from_html(
             HtmlDocumentInput {
-                document_id,
+                owner,
                 source_address: address,
                 source_blob: raw,
                 bytes: &bytes,

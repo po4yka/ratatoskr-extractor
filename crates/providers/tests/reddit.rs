@@ -3,14 +3,14 @@
 use extractor_providers::{ProviderInput, ProviderLimits, SourceRoute, from_provider};
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 #[test]
 fn reddit_post_and_comments_become_blocks() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = include_bytes!("fixtures/reddit-post.json");
     let input = ProviderInput {
-        document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000042")?,
+        owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
         source_address: DocumentAddress::parse(
             "https://www.reddit.com/r/fixturerust/comments/abc123/deterministic_extraction_fixture_post/.json",
         )?,
@@ -33,7 +33,10 @@ fn reddit_post_and_comments_become_blocks() -> Result<(), Box<dyn std::error::Er
             "Nested reply body.",
         ]
     );
-    assert_eq!(extraction.document.document_id, input.document_id);
+    assert_eq!(
+        extraction.document.document_id,
+        extractor_document_ir::stable_document_id(input.owner, &extraction.document.content_digest)
+    );
     assert_eq!(extraction.document.source_address, input.source_address);
     assert_eq!(
         extraction.document.title.as_deref(),

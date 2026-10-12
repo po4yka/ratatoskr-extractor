@@ -6,8 +6,8 @@ use ratatoskr_event_envelope::{
     CommandEnvelope, EnvelopeSchemaVersion, EventEnvelope, EventPayload as _, ProducerName,
 };
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, EntityRef, EventId,
-    Extensions, MediaType, OperationId, TenantRef, WireTimestamp,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, EntityRef, EventId, Extensions,
+    MediaType, OperationId, TenantRef, UserId, WireTimestamp,
 };
 use ratatoskr_operation_contracts::{OperationReported, OperationStatus};
 use sqlx::{PgPool, PgTransaction};
@@ -172,7 +172,7 @@ pub async fn claim_queued_run(
 ) -> Result<Option<QueuedRun>, ConsumeError> {
     let claimed = sqlx::query_as::<_, ClaimedRow>(
         "with next as (
-             select r.run_id, r.document_id, s.normalized_url, s.classification,
+             select r.run_id, r.owner_id, s.normalized_url, s.classification,
                     r.blob_owner, s.blob_digest_hex, r.blob_media_type, r.blob_length_bytes
                from extractor.extraction_runs r
                join extractor.sources s on s.source_id = r.source_id
@@ -187,7 +187,7 @@ pub async fn claim_queued_run(
                 claimed_by = $1,
                 claimed_until = clock_timestamp() + make_interval(secs => $2)
            from next where r.run_id = next.run_id
-          returning r.run_id, next.document_id, next.normalized_url, next.classification,
+          returning r.run_id, next.owner_id, next.normalized_url, next.classification,
                     next.blob_owner, next.blob_digest_hex, next.blob_media_type,
                     next.blob_length_bytes",
     )
@@ -200,7 +200,7 @@ pub async fn claim_queued_run(
         .transpose()
 }
 
-/// One claimed row: run, document, source address, classification and the optional blob columns.
+/// One claimed row: run, owner, source address, classification and the optional blob columns.
 type ClaimedRow = (
     uuid::Uuid,
     uuid::Uuid,
@@ -213,10 +213,11 @@ type ClaimedRow = (
 );
 
 fn queued_run(row: ClaimedRow, max_event_bytes: usize) -> Result<QueuedRun, ConsumeError> {
-    let (run_id, document_id, url, classification, owner, digest, media_type, length) = row;
-    let blob = match (owner, digest, media_type, length) {
-        (Some(owner), Some(digest), Some(media_type), Some(length)) => Some(BlobRef {
-            owner_service: BlobOwner::parse(&owner).map_err(|_| ConsumeError::InvalidArtifact)?,
+    let (run_id, owner_id, url, classification, blob_owner, digest, media_type, length) = row;
+    let blob = match (blob_owner, digest, media_type, length) {
+        (Some(blob_owner), Some(digest), Some(media_type), Some(length)) => Some(BlobRef {
+            owner_service: BlobOwner::parse(&blob_owner)
+                .map_err(|_| ConsumeError::InvalidArtifact)?,
             digest: ContentDigest {
                 algorithm: DigestAlgorithm::Sha256,
                 hex: DigestHex::parse(&digest).map_err(|_| ConsumeError::InvalidArtifact)?,
@@ -228,7 +229,7 @@ fn queued_run(row: ClaimedRow, max_event_bytes: usize) -> Result<QueuedRun, Cons
     };
     Ok(QueuedRun {
         run_id,
-        document_id: DocumentId(document_id),
+        owner: UserId(owner_id),
         url,
         classification,
         blob,
@@ -264,11 +265,11 @@ async fn queue_run(
     };
     sqlx::query(
         "insert into extractor.extraction_runs
-             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id,
               status, policy_version, normalizer_version, parser_version, queued_at,
               blob_owner, blob_media_type, blob_length_bytes)
-         values ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9, $10, transaction_timestamp(),
-                 $11, $12, $13)",
+         values ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, transaction_timestamp(),
+                 $10, $11, $12)",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(command.command_id)
@@ -276,7 +277,6 @@ async fn queue_run(
     .bind(command.tenant_id.user_id().0)
     .bind(command.correlation_id.to_string())
     .bind(source.source_id)
-    .bind(DocumentId::new_v7().0)
     .bind(source.policy_version)
     .bind(source.normalizer_version)
     .bind(source.parser_version)

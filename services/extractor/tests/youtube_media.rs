@@ -135,7 +135,6 @@ async fn succeeded_run(
     let owner_id = uuid::Uuid::now_v7();
     let source_id = uuid::Uuid::now_v7();
     let run_id = uuid::Uuid::now_v7();
-    let document_id = uuid::Uuid::now_v7();
     sqlx::query(
         "insert into extractor.inbox_events (command_id, subject, command_type, producer, received_at)
          values ($1, 'cmd.content.capture.requested.v1', 'content.capture.requested.v1',
@@ -157,10 +156,10 @@ async fn succeeded_run(
     .await?;
     sqlx::query(
         "insert into extractor.extraction_runs
-             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id,
               status, policy_version, normalizer_version, parser_version, queued_at, started_at,
               completed_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'succeeded', 'ssrf-v1', 'url-v1', 'youtube-v1',
+         values ($1, $2, $3, $4, $5, $6, 'succeeded', 'ssrf-v1', 'url-v1', 'youtube-v1',
                  transaction_timestamp(), transaction_timestamp(), transaction_timestamp())",
     )
     .bind(run_id)
@@ -169,7 +168,6 @@ async fn succeeded_run(
     .bind(owner_id)
     .bind(format!("operation:{operation_id}"))
     .bind(source_id)
-    .bind(document_id)
     .execute(pool)
     .await?;
     Ok(run_id)

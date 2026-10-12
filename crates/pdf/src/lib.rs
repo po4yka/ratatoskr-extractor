@@ -11,7 +11,7 @@ use std::panic::AssertUnwindSafe;
 use extractor_document_ir::{CandidateDecision, evaluate_plain_text, paragraph_block};
 use lopdf::{Document as PdfDocument, Object};
 use ratatoskr_document_contracts::{Document, DocumentAddress, ExtractionStrategy};
-use ratatoskr_identifiers::{BlobRef, DocumentId};
+use ratatoskr_identifiers::{BlobRef, UserId};
 
 /// Stable extraction strategy recorded for the direct PDF path.
 pub const DIRECT_PDF_STRATEGY: &str = "direct_pdf";
@@ -19,8 +19,8 @@ pub const DIRECT_PDF_STRATEGY: &str = "direct_pdf";
 /// Inputs needed to construct a shared document from verified PDF bytes.
 #[derive(Debug, Clone)]
 pub struct PdfDocumentInput<'a> {
-    /// Stable document identity assigned by the extraction run.
-    pub document_id: DocumentId,
+    /// Owner of the capture; the document identity is derived from it and the content digest.
+    pub owner: UserId,
     /// Final source address.
     pub source_address: DocumentAddress,
     /// Verified raw source artifact.
@@ -139,7 +139,7 @@ fn parse_document(
     let strategy =
         ExtractionStrategy::parse(DIRECT_PDF_STRATEGY).map_err(|_| PdfError::InvalidIdentity)?;
     let assembled = extractor_document_ir::assemble_document(
-        input.document_id,
+        input.owner,
         input.source_address,
         &input.source_blob,
         &strategy,

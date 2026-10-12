@@ -168,12 +168,12 @@ async fn complete_html(
         max_input_bytes: parser.max_input_bytes,
         max_dom_nodes: parser.max_dom_nodes,
     };
-    let document_id = run.document_id;
+    let owner = run.owner;
     let parse_started = std::time::Instant::now();
     let document = tokio::task::spawn_blocking(move || {
         from_html(
             HtmlDocumentInput {
-                document_id,
+                owner,
                 source_address: address,
                 source_blob: raw,
                 bytes: &bytes,
@@ -309,12 +309,12 @@ async fn complete_provider(
         max_input_bytes: providers.max_input_bytes,
         max_blocks: providers.max_blocks,
     };
-    let document_id = run.document_id;
+    let owner = run.owner;
     let parse_started = std::time::Instant::now();
     let parsed = tokio::task::spawn_blocking(move || {
         from_provider(
             ProviderInput {
-                document_id,
+                owner,
                 source_address: payload_address,
                 source_blob: raw,
                 route,
@@ -589,7 +589,7 @@ async fn escalate_to_render(
             let rendered = tokio::fs::read(path).await?;
             let address = DocumentAddress::parse(&completed.final_url)
                 .map_err(|_| ProcessError::DocumentIdentity)?;
-            let document_id = run.document_id;
+            let owner = run.owner;
             let parse_limits = ParseLimits {
                 max_input_bytes: parser.max_input_bytes,
                 max_dom_nodes: parser.max_dom_nodes,
@@ -598,7 +598,7 @@ async fn escalate_to_render(
             let parsed = tokio::task::spawn_blocking(move || {
                 from_html(
                     HtmlDocumentInput {
-                        document_id,
+                        owner,
                         source_address: address,
                         source_blob: completed.dom.clone(),
                         bytes: &rendered,

@@ -9,7 +9,7 @@ use ratatoskr_document_contracts::{
     Document, DocumentAddress, DocumentBlock, DocumentProvenance, ExtractionStrategy, LanguageTag,
 };
 use ratatoskr_identifiers::{
-    BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId,
+    BlobRef, BlockId, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, UserId,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -106,8 +106,8 @@ pub struct ParseLimits {
 /// Inputs needed to construct a shared document.
 #[derive(Debug, Clone)]
 pub struct HtmlDocumentInput<'a> {
-    /// Stable document identity assigned by the extraction run.
-    pub document_id: DocumentId,
+    /// Owner of the capture; the document identity is derived from it and the content digest.
+    pub owner: UserId,
     /// Final source address.
     pub source_address: DocumentAddress,
     /// Verified raw source artifact.
@@ -200,7 +200,7 @@ pub fn from_html(
     let strategy = ExtractionStrategy::parse(selected.strategy.as_str())
         .map_err(|_| DocumentIrError::InvalidIdentity)?;
     let document = assemble_document(
-        input.document_id,
+        input.owner,
         input.source_address,
         &input.source_blob,
         &strategy,
@@ -216,16 +216,17 @@ pub fn from_html(
 
 /// Assembles the shared Document contract from ordered blocks and one strategy.
 ///
-/// The content digest is SHA-256 over the canonical JSON rendering of `blocks` alone, and every
-/// block receives provenance naming `strategy` and the verified source artifact. All extraction
-/// paths must build their Document through this constructor so identity and evidence stay
-/// uniform.
+/// The content digest is SHA-256 over the canonical JSON rendering of `blocks` alone, so neither
+/// the source address nor the route that delivered the text changes it. The document identity is
+/// [`stable_document_id`] of `owner` and that digest, so no caller can mint one. Every block
+/// receives provenance naming `strategy` and the verified source artifact. All extraction paths
+/// must build their Document through this constructor so identity and evidence stay uniform.
 ///
 /// # Errors
 ///
 /// Returns [`DocumentIrError`] when a service-owned contract value cannot be constructed.
 pub fn assemble_document(
-    document_id: DocumentId,
+    owner: UserId,
     source_address: DocumentAddress,
     source_blob: &BlobRef,
     strategy: &ExtractionStrategy,
@@ -235,6 +236,10 @@ pub fn assemble_document(
 ) -> Result<Document, DocumentIrError> {
     let canonical = canonical_block_content(&blocks)?;
     let digest = hex(&Sha256::digest(canonical.as_bytes()));
+    let content_digest = ContentDigest {
+        algorithm: DigestAlgorithm::Sha256,
+        hex: DigestHex::parse(&digest).map_err(|_| DocumentIrError::InvalidIdentity)?,
+    };
     assign_block_ids(&mut blocks, &digest)?;
     let provenance = blocks
         .iter()
@@ -248,17 +253,36 @@ pub fn assemble_document(
         })
         .collect::<Result<Vec<_>, DocumentIrError>>()?;
     Ok(Document {
-        document_id,
+        document_id: stable_document_id(owner, &content_digest),
         source_address,
-        content_digest: ContentDigest {
-            algorithm: DigestAlgorithm::Sha256,
-            hex: DigestHex::parse(&digest).map_err(|_| DocumentIrError::InvalidIdentity)?,
-        },
+        content_digest,
         title,
         language,
         blocks,
         provenance,
     })
+}
+
+/// Derives the identity of a document from its owner and its content digest.
+///
+/// The identity is the first 16 bytes of SHA-256 over `"ratatoskr.document.v1\0"`, the owner's
+/// UUID bytes and the lowercase hexadecimal content digest, with the version nibble set to 8 and
+/// the RFC 4122 variant bits set (the construction `assign_block_ids` uses for blocks). It is a
+/// pure function: the same text for the same owner always has the same identity, whatever route
+/// delivered it, and another owner or another text has another one (XR-021 CONTRACTS.md R5-02).
+#[must_use]
+pub fn stable_document_id(owner: UserId, content_digest: &ContentDigest) -> DocumentId {
+    let mut material = Sha256::new();
+    material.update(b"ratatoskr.document.v1\0");
+    material.update(owner.0.as_bytes());
+    material.update(content_digest.hex.as_str().as_bytes());
+    let digest = material.finalize();
+    let mut bytes = [0_u8; 16];
+    let (head, _) = digest.split_at(bytes.len());
+    bytes.copy_from_slice(head);
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    DocumentId(uuid::Uuid::from_bytes(bytes))
 }
 
 #[derive(serde::Serialize)]

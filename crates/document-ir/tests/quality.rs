@@ -5,7 +5,7 @@ use extractor_document_ir::{
 };
 use ratatoskr_document_contracts::DocumentAddress;
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 #[test]
@@ -17,7 +17,7 @@ fn evaluation_is_repeatable_with_stable_ties() -> Result<(), Box<dyn std::error:
     let evaluate = || {
         from_html(
             HtmlDocumentInput {
-                document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000006")?,
+                owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
                 source_address: DocumentAddress::parse("https://example.com/tie")?,
                 source_blob: blob_ref()?,
                 bytes: html.as_bytes(),
@@ -73,7 +73,7 @@ fn evaluation_is_repeatable_with_stable_ties() -> Result<(), Box<dyn std::error:
 fn login_shell_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let result = from_html(
         HtmlDocumentInput {
-            document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000007")?,
+            owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
             source_address: DocumentAddress::parse("https://example.com/login")?,
             source_blob: blob_ref()?,
             bytes: b"<html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><p>Accept cookies to continue.</p></main></body></html>",

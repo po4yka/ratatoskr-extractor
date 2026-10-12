@@ -35,7 +35,7 @@ pub use topology::{CAPTURE_DURABLE, TopologyError, verify_bus_topology};
 
 use extractor_blob_store::BlobStoreError;
 use ratatoskr_event_envelope::EnvelopeError;
-use ratatoskr_identifiers::{BlobRef, DocumentId};
+use ratatoskr_identifiers::{BlobRef, UserId};
 
 const CAPTURE_COMMAND_TYPE: &str = "content.capture.requested.v1";
 const CAPTURE_SUBJECT: &str = "cmd.content.capture.requested.v1";
@@ -90,8 +90,8 @@ pub struct CompletedFetch<'a> {
 pub struct QueuedRun {
     /// Stable run identity.
     pub run_id: uuid::Uuid,
-    /// Stable document identity assigned with the run.
-    pub document_id: DocumentId,
+    /// Owner of the command that queued the run.
+    pub owner: UserId,
     /// Normalized untrusted public URL.
     pub url: String,
     /// Source classification recorded at intake.

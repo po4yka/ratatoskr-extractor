@@ -4,7 +4,7 @@
 use ratatoskr_document_contracts::{Document, DocumentAddress, ExtractionStrategy};
 
 use extractor_document_ir::{CandidateDecision, assemble_document};
-use ratatoskr_identifiers::{BlobRef, DocumentId};
+use ratatoskr_identifiers::{BlobRef, UserId};
 
 mod hacker_news;
 mod reddit;
@@ -24,8 +24,8 @@ pub enum SourceRoute {
 /// Inputs needed to construct a shared document from a verified provider payload.
 #[derive(Debug, Clone)]
 pub struct ProviderInput<'a> {
-    /// Stable document identity assigned by the extraction run.
-    pub document_id: DocumentId,
+    /// Owner of the capture; the document identity is derived from it and the content digest.
+    pub owner: UserId,
     /// Address of the fetched native representation.
     pub source_address: DocumentAddress,
     /// Verified raw payload artifact.
@@ -111,7 +111,7 @@ pub fn from_provider(
     let extraction_strategy =
         ExtractionStrategy::parse(strategy).map_err(|_| ProviderError::Schema)?;
     let document = assemble_document(
-        input.document_id,
+        input.owner,
         input.source_address,
         &input.source_blob,
         &extraction_strategy,

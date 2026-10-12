@@ -8,7 +8,7 @@ use extractor_persistence::test_support::TestDatabase;
 use extractor_safe_fetch::SafeFetcher;
 use extractor_test_support::MAX_EVENT_BYTES;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
-use ratatoskr_identifiers::{BlobRef, DocumentId};
+use ratatoskr_identifiers::BlobRef;
 use serde_json::json;
 
 const TRANSCRIPT_MARKER: &str = "transcript_segment_fixture_marker";
@@ -264,7 +264,6 @@ async fn queue_direct(
     let owner_id = uuid::Uuid::now_v7();
     let source_id = uuid::Uuid::now_v7();
     let run_id = uuid::Uuid::now_v7();
-    let document_id = DocumentId::new_v7().0;
     sqlx::query(
         "insert into extractor.inbox_events (command_id, subject, command_type, producer, received_at)
          values ($1, 'cmd.content.capture.requested.v1', 'content.capture.requested.v1',
@@ -287,9 +286,9 @@ async fn queue_direct(
     .await?;
     sqlx::query(
         "insert into extractor.extraction_runs
-             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id,
               status, policy_version, normalizer_version, parser_version, queued_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'queued', 'ssrf-v1', 'url-v1', 'youtube-v1',
+         values ($1, $2, $3, $4, $5, $6, 'queued', 'ssrf-v1', 'url-v1', 'youtube-v1',
                  transaction_timestamp())",
     )
     .bind(run_id)
@@ -298,7 +297,6 @@ async fn queue_direct(
     .bind(owner_id)
     .bind(format!("operation:{operation_id}"))
     .bind(source_id)
-    .bind(document_id)
     .execute(pool)
     .await?;
     Ok(())

@@ -15,7 +15,7 @@ mod timedtext;
 
 use extractor_document_ir::CandidateDecision;
 use ratatoskr_document_contracts::DocumentAddress;
-use ratatoskr_identifiers::{BlobRef, DocumentId};
+use ratatoskr_identifiers::{BlobRef, UserId};
 
 pub use convert::TranscriptExtraction;
 pub use convert::from_transcript;
@@ -55,8 +55,8 @@ pub struct YoutubeLimits {
 /// Inputs needed to construct a shared document from parsed transcript segments.
 #[derive(Debug, Clone)]
 pub struct TranscriptInput<'a> {
-    /// Stable document identity assigned by the extraction run.
-    pub document_id: DocumentId,
+    /// Owner of the capture; the document identity is derived from it and the content digest.
+    pub owner: UserId,
     /// Final source address of the canonical watch URL.
     pub source_address: DocumentAddress,
     /// Verified raw watch-page artifact.

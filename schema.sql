@@ -48,7 +48,6 @@ create table extractor.extraction_runs (
     policy_version      text        not null,
     normalizer_version  text        not null,
     parser_version      text        not null,
-    document_id         uuid        not null unique,
     queued_at           timestamptz not null,
     started_at          timestamptz,
     completed_at        timestamptz,

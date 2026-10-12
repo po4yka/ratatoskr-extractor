@@ -11,7 +11,7 @@ use extractor_providers::{ProviderInput, ProviderLimits, SourceRoute, from_provi
 use extractor_youtube::{PlayerMeta, Segment, TranscriptInput, YoutubeLimits, from_transcript};
 use ratatoskr_document_contracts::{Document, DocumentAddress};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
     canonical_json,
 };
 use serde::Deserialize;
@@ -220,7 +220,7 @@ fn document_for_case(case: &str) -> Result<Document, CorpusError> {
 fn html_document() -> Result<Document, CorpusError> {
     from_html(
         HtmlDocumentInput {
-            document_id: document_id("000000000101")?,
+            owner: corpus_owner()?,
             source_address: address("https://corpus.example/html-semantic")?,
             source_blob: blob(HTML_SEMANTIC.len(), "text/html")?,
             bytes: HTML_SEMANTIC,
@@ -237,7 +237,7 @@ fn html_document() -> Result<Document, CorpusError> {
 fn pdf_document() -> Result<Document, CorpusError> {
     from_pdf(
         PdfDocumentInput {
-            document_id: document_id("000000000102")?,
+            owner: corpus_owner()?,
             source_address: address("https://corpus.example/direct.pdf")?,
             source_blob: blob(PDF_TEXT.len(), "application/pdf")?,
             bytes: PDF_TEXT,
@@ -259,11 +259,7 @@ fn provider_document(
 ) -> Result<Document, CorpusError> {
     from_provider(
         ProviderInput {
-            document_id: document_id(if matches!(route, SourceRoute::HackerNews) {
-                "000000000103"
-            } else {
-                "000000000104"
-            })?,
+            owner: corpus_owner()?,
             source_address: address(if matches!(route, SourceRoute::HackerNews) {
                 "https://hn.algolia.com/api/v1/items/424242"
             } else {
@@ -306,7 +302,7 @@ fn transcript_document() -> Result<Document, CorpusError> {
         .collect();
     from_transcript(
         TranscriptInput {
-            document_id: document_id("000000000105")?,
+            owner: corpus_owner()?,
             source_address: address("https://www.youtube.com/watch?v=dQw4w9WgXcQ")?,
             source_blob: blob(TRANSCRIPT.len(), "application/json")?,
             meta: &meta,
@@ -325,8 +321,10 @@ fn transcript_document() -> Result<Document, CorpusError> {
     .map_err(|error| extraction_error("youtube-transcript", error))
 }
 
-fn document_id(suffix: &str) -> Result<DocumentId, CorpusError> {
-    DocumentId::parse(&format!("018f0000-0000-7000-8000-{suffix}"))
+/// The one owner every corpus case is captured for; each document identity derives from it and the
+/// case's content digest.
+fn corpus_owner() -> Result<UserId, CorpusError> {
+    UserId::parse("018f0000-0000-7000-8000-000000000100")
         .map_err(|error| extraction_error("identity", error))
 }
 

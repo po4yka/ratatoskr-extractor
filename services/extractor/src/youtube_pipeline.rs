@@ -277,7 +277,7 @@ async fn complete_youtube_flow(
         DocumentAddress::parse(watch_address).map_err(|_| ProcessError::DocumentIdentity)?;
     let conversion = from_transcript(
         TranscriptInput {
-            document_id: run.document_id,
+            owner: run.owner,
             source_address: address,
             source_blob: fetched.artifact.clone(),
             meta: &meta,

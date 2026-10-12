@@ -168,18 +168,17 @@ async fn insert_run(
     .await?;
     sqlx::query(
         "insert into extractor.extraction_runs
-             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id,
               status, policy_version, normalizer_version, parser_version, queued_at,
               blob_owner, blob_media_type, blob_length_bytes)
-         values ($1, $2, $3, $4, 'operation:x', $5, $6, 'queued', 'p', 'n', 'v', now(),
-                 $7, $8, $9)",
+         values ($1, $2, $3, $4, 'operation:x', $5, 'queued', 'p', 'n', 'v', now(),
+                 $6, $7, $8)",
     )
     .bind(uuid::Uuid::now_v7())
     .bind(command)
     .bind(uuid::Uuid::now_v7())
     .bind(uuid::Uuid::now_v7())
     .bind(source)
-    .bind(uuid::Uuid::now_v7())
     .bind(claim.0)
     .bind(claim.1)
     .bind(claim.2)

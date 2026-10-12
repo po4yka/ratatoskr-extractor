@@ -15,7 +15,6 @@ use extractor_test_support::capture::CaptureCommandJson;
 use extractor_test_support::{ScriptedResponse, ScriptedServer, TemporaryBlobRoot};
 use futures_util::stream;
 use ratatoskr_document_contracts::DocumentAddress;
-use ratatoskr_identifiers::DocumentId;
 
 const TEXT_PDF: &[u8] = include_bytes!("../../../crates/pdf/tests/fixtures/text-two-pages.pdf");
 const ENCRYPTED_PDF: &[u8] =
@@ -52,7 +51,7 @@ async fn single_candidate_completion_commits_like_html() -> Result<(), Box<dyn s
         .await?;
     let extraction = from_pdf(
         PdfDocumentInput {
-            document_id: run.document_id,
+            owner: run.owner,
             source_address: DocumentAddress::parse(&run.url)?,
             source_blob: raw.clone(),
             bytes: TEXT_PDF,
@@ -121,7 +120,7 @@ async fn quality_rejection_records_explicit_class() -> Result<(), Box<dyn std::e
         .await?;
     let Err(PdfError::NoTextLayer { candidates }) = from_pdf(
         PdfDocumentInput {
-            document_id: run.document_id,
+            owner: run.owner,
             source_address: DocumentAddress::parse(&run.url)?,
             source_blob: raw.clone(),
             bytes: NO_TEXT_PDF,
@@ -562,7 +561,6 @@ async fn queue_direct(
     let owner_id = uuid::Uuid::now_v7();
     let source_id = uuid::Uuid::now_v7();
     let run_id = uuid::Uuid::now_v7();
-    let document_id = DocumentId::new_v7().0;
     let host = url
         .split("://")
         .nth(1)
@@ -592,9 +590,9 @@ async fn queue_direct(
     .await?;
     sqlx::query(
         "insert into extractor.extraction_runs
-             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id,
               status, policy_version, normalizer_version, parser_version, queued_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'queued', 'ssrf-v1', 'url-v1', 'html-v1',
+         values ($1, $2, $3, $4, $5, $6, 'queued', 'ssrf-v1', 'url-v1', 'html-v1',
                  transaction_timestamp())",
     )
     .bind(run_id)
@@ -603,7 +601,6 @@ async fn queue_direct(
     .bind(owner_id)
     .bind(format!("operation:{operation_id}"))
     .bind(source_id)
-    .bind(document_id)
     .execute(pool)
     .await?;
     Ok(())

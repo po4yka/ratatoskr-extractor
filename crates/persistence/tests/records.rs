@@ -183,9 +183,9 @@ async fn seed_run(pool: &sqlx::PgPool) -> Result<(uuid::Uuid, uuid::Uuid), sqlx:
     .await?;
     sqlx::query(
         "insert into extractor.extraction_runs
-             (run_id, command_id, operation_id, owner_id, correlation_id, source_id, document_id,
+             (run_id, command_id, operation_id, owner_id, correlation_id, source_id,
               status, policy_version, normalizer_version, parser_version, queued_at, started_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'running', 'ssrf-v1', 'url-v1', 'html-v1', now(), now())",
+         values ($1, $2, $3, $4, $5, $6, 'running', 'ssrf-v1', 'url-v1', 'html-v1', now(), now())",
     )
     .bind(run_id)
     .bind(command_id)
@@ -193,7 +193,6 @@ async fn seed_run(pool: &sqlx::PgPool) -> Result<(uuid::Uuid, uuid::Uuid), sqlx:
     .bind(owner_id)
     .bind(format!("operation:{}", uuid::Uuid::now_v7()))
     .bind(source_id)
-    .bind(uuid::Uuid::now_v7())
     .execute(pool)
     .await?;
     Ok((run_id, owner_id))

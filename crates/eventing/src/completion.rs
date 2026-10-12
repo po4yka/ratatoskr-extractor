@@ -221,11 +221,10 @@ async fn complete(
         "update extractor.extraction_runs
             set status = 'succeeded', completed_at = transaction_timestamp(),
                 claimed_until = null, claimed_by = null
-          where run_id = $1 and status = 'running' and document_id = $2
+          where run_id = $1 and status = 'running'
           returning command_id, operation_id, owner_id, correlation_id",
     )
     .bind(run_id)
-    .bind(document.document_id.0)
     .fetch_optional(&mut *transaction)
     .await?
     .map(CompletionContext::from);

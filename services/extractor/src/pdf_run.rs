@@ -181,7 +181,7 @@ async fn finish_pdf(
         max_pages: pdf.max_pages,
         max_text_bytes: pdf.max_text_bytes,
     };
-    let document_id = run.document_id;
+    let owner = run.owner;
     let source_blob = raw.clone();
     let parse_started = std::time::Instant::now();
     // The PDF parser panics on hostile input; `from_pdf` contains that at its own boundary, and
@@ -189,7 +189,7 @@ async fn finish_pdf(
     let parsed = tokio::task::spawn_blocking(move || {
         from_pdf(
             PdfDocumentInput {
-                document_id,
+                owner,
                 source_address: address,
                 source_blob,
                 bytes: &bytes,

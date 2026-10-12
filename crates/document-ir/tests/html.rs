@@ -3,7 +3,7 @@
 use extractor_document_ir::{DocumentIrError, HtmlDocumentInput, ParseLimits, from_html};
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 #[test]
@@ -12,7 +12,7 @@ fn one_dom_produces_ordered_shared_blocks_and_provenance() -> Result<(), Box<dyn
     let source = blob_ref()?;
     let document = from_html(
         HtmlDocumentInput {
-            document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000002")?,
+            owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
             source_address: DocumentAddress::parse("https://example.com/article")?,
             source_blob: source.clone(),
             bytes: br#"<!doctype html><html lang="en"><head><title>  Ratatoskr   Notes </title></head><body><h1> First </h1><p>Hello world. This paragraph records enough verified detail to remain useful after deterministic quality evaluation.</p><h2>Second</h2><p>More text follows with concrete context, complete sentences, and evidence for every downstream reader.</p></body></html>"#,
@@ -70,12 +70,12 @@ fn block_texts(blocks: &[DocumentBlock]) -> Vec<&str> {
 #[test]
 fn malformed_html_is_recovered_deterministically() -> Result<(), Box<dyn std::error::Error>> {
     let source = blob_ref()?;
-    let document_id = DocumentId::parse("018f0000-0000-7000-8000-000000000004")?;
+    let owner = UserId::parse("018f0000-0000-7000-8000-000000000100")?;
     let source_address = DocumentAddress::parse("https://example.com/malformed")?;
     let convert = || {
         from_html(
             HtmlDocumentInput {
-                document_id,
+                owner,
                 source_address: source_address.clone(),
                 source_blob: source.clone(),
                 bytes: b"<title>Broken<title><body><h1>Heading<p>first<h2>Next<p>second",
@@ -106,7 +106,7 @@ fn document_ir_blocks_receive_unique_identifiers() -> Result<(), Box<dyn std::er
     let source = blob_ref()?;
     let document = from_html(
         HtmlDocumentInput {
-            document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000003")?,
+            owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
             source_address: DocumentAddress::parse("https://example.com/identified")?,
             source_blob: source,
             bytes: br"<article><h1>Heading</h1><p>This paragraph contains enough concrete evidence to satisfy the deterministic quality evaluator for this test, including a second sentence with provenance-relevant details and a third sentence that makes the normalized content comfortably exceed the minimum text threshold.</p></article>",

@@ -65,7 +65,7 @@ async fn completed_html_persists_all_candidate_decisions_atomically()
         .await?;
     let extraction = from_html(
         HtmlDocumentInput {
-            document_id: run.document_id,
+            owner: run.owner,
             source_address: DocumentAddress::parse(&run.url)?,
             source_blob: raw.clone(),
             bytes: &html,
@@ -185,7 +185,7 @@ async fn quality_rejection_persists_evidence_without_document_event()
         .await?;
     let result = from_html(
         HtmlDocumentInput {
-            document_id: run.document_id,
+            owner: run.owner,
             source_address: DocumentAddress::parse(&run.url)?,
             source_blob: raw.clone(),
             bytes: &html,

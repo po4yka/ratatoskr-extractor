@@ -3,14 +3,14 @@
 use extractor_pdf::{PdfDocumentInput, PdfParseLimits, from_pdf};
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 #[test]
 fn text_pdf_yields_page_ordered_paragraphs() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = include_bytes!("fixtures/text-two-pages.pdf");
     let input = PdfDocumentInput {
-        document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000007")?,
+        owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
         source_address: DocumentAddress::parse("https://example.com/report.pdf")?,
         source_blob: blob_ref(bytes.len(), "application/pdf")?,
         bytes,
@@ -29,7 +29,10 @@ fn text_pdf_yields_page_ordered_paragraphs() -> Result<(), Box<dyn std::error::E
             "Second page follows the first in the page tree. Reading order must keep this page after page one.",
         ]
     );
-    assert_eq!(extraction.document.document_id, input.document_id);
+    assert_eq!(
+        extraction.document.document_id,
+        extractor_document_ir::stable_document_id(input.owner, &extraction.document.content_digest)
+    );
     assert_eq!(extraction.document.source_address, input.source_address);
     assert_eq!(
         extraction.document.title.as_deref(),

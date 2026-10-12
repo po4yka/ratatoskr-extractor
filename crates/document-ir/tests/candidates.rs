@@ -3,14 +3,14 @@
 use extractor_document_ir::{HtmlDocumentInput, ParseLimits, from_html};
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 #[test]
 fn semantic_article_beats_page_chrome() -> Result<(), Box<dyn std::error::Error>> {
     let extraction = from_html(
         HtmlDocumentInput {
-            document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000005")?,
+            owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
             source_address: DocumentAddress::parse("https://example.com/noisy")?,
             source_blob: blob_ref()?,
             bytes: br"<!doctype html><html><head><title>Forest Dispatch</title></head><body>

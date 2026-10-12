@@ -4,11 +4,11 @@ use extractor_pdf::{PdfDocumentInput, PdfParseLimits, from_pdf};
 use libfuzzer_sys::fuzz_target;
 use ratatoskr_document_contracts::DocumentAddress;
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 fuzz_target!(|data: &[u8]| {
-    let Ok(document_id) = DocumentId::parse("018f0000-0000-7000-8000-000000000902") else {
+    let Ok(owner) = UserId::parse("018f0000-0000-7000-8000-000000000902") else {
         return;
     };
     let Ok(source_address) = DocumentAddress::parse("https://corpus.example/fuzz.pdf") else {
@@ -19,7 +19,7 @@ fuzz_target!(|data: &[u8]| {
     };
     let _ = from_pdf(
         PdfDocumentInput {
-            document_id,
+            owner,
             source_address,
             source_blob,
             bytes: data,

@@ -3,7 +3,7 @@
 use extractor_pdf::{PdfDocumentInput, PdfError, PdfParseLimits, from_pdf};
 use ratatoskr_document_contracts::{DocumentAddress, DocumentBlock};
 use ratatoskr_identifiers::{
-    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, DocumentId, MediaType,
+    BlobOwner, BlobRef, ContentDigest, DigestAlgorithm, DigestHex, MediaType, UserId,
 };
 
 #[test]
@@ -132,7 +132,7 @@ fn test_input(
     bytes: &'static [u8],
 ) -> Result<PdfDocumentInput<'static>, Box<dyn std::error::Error>> {
     Ok(PdfDocumentInput {
-        document_id: DocumentId::parse("018f0000-0000-7000-8000-000000000007")?,
+        owner: UserId::parse("018f0000-0000-7000-8000-000000000100")?,
         source_address: DocumentAddress::parse("https://example.com/report.pdf")?,
         source_blob: blob_ref(bytes.len())?,
         bytes,

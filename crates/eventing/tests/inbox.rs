@@ -37,11 +37,11 @@ async fn one_command_creates_one_queued_run_under_redelivery()
         .fetch_one(database.database.pool())
         .await?;
     assert_eq!(status, "queued");
-    let has_document_id: bool =
-        sqlx::query_scalar("select document_id is not null from extractor.extraction_runs")
+    let has_owner: bool =
+        sqlx::query_scalar("select owner_id is not null from extractor.extraction_runs")
             .fetch_one(database.database.pool())
             .await?;
-    assert!(has_document_id);
+    assert!(has_owner);
 
     database.cleanup().await?;
     Ok(())
