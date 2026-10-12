@@ -270,6 +270,8 @@ JetStream deliveries. See `deploy/README.md`.
 
 Events are idempotent and correlated with Platform operations. Knowledge consumes accepted documents; it does not depend on extractor database tables.
 
+The document identity is `stable_document_id(owner, content_digest)` (`crates/document-ir`): the first 16 bytes of SHA-256 over `"ratatoskr.document.v1\0"`, the owner's UUID bytes and the lowercase hexadecimal content digest, as an RFC 9562 version 8 UUID. The content digest covers the text blocks only, so neither the route (a URL or a Telegram blob) nor the source address changes it. Two operations over the same bytes for the same owner therefore each complete as their own operation, emit their own `evt.content.document.extracted.v1` and their own operation report, and name one `document:<id>`. A re-extraction whose text changed is a new document, and the same text for another owner is another document. A run row carries no document identity and a parser input carries the owner, so no code path can mint one.
+
 ### Outbox delivery
 
 Every fact leaves through the transactional outbox, and a row ends in exactly one of three ways:

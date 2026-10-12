@@ -34,6 +34,8 @@ and the logs, never in the report.
 `document_blob`, the extractor-owned Document IR blob (the same `BlobRef` the operation report
 carries). Its envelope names `aggregate_id` `document:<document_id>`, the capture command's
 correlation, `command:<command_id>` as causation, and the owning tenant.
+
+The `document_id` is derived, never minted per run: `stable_document_id(owner, content_digest)` is the first 16 bytes of SHA-256 over `"ratatoskr.document.v1\0"`, the owner's UUID bytes and the lowercase hexadecimal content digest, as an RFC 9562 version 8 UUID, and the content digest covers the text blocks only. Two operations over the same bytes for the same owner share one `document_id` (each with its own event and its own operation report), a re-extraction with changed text is a new document, and the same text for another owner is another document (XR-021 CONTRACTS.md R5-02).
 `evt.platform.operation.reported.v1` carries queued, succeeded, or failed operation facts and
 extractor-owned `BlobRef` values. No local filesystem path crosses the boundary.
 
