@@ -5,11 +5,16 @@ there is no blob HTTP service.
 
 ```bash
 sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin ratatoskr-extractor
-sudo install -d -m 0750 -o root -g ratatoskr-extractor /etc/ratatoskr
+# /etc/ratatoskr and the log directory belong to the shared `ratatoskr` group, exactly as
+# ratatoskr-platform's deploy/README.md step 1 creates them; the unit names that group in
+# SupplementaryGroups=. A per-service owner here would lock every other service out of both.
+sudo getent group ratatoskr >/dev/null || sudo groupadd --system ratatoskr
+sudo install -d -m 0750 -o root -g ratatoskr /etc/ratatoskr
 sudo install -d -m 0700 -o ratatoskr-extractor -g ratatoskr-extractor \
   /mnt/nvme/ratatoskr/blobs/ratatoskr-extractor
-sudo install -d -m 0770 -o root -g ratatoskr-extractor /mnt/nvme/ratatoskr/logs
-sudo -u postgres psql -f deploy/postgres/role.sql
+sudo install -d -m 0770 -o root -g ratatoskr /mnt/nvme/ratatoskr/logs
+# PostgreSQL is the `shared-postgres` container; there is no postgres user on the host.
+docker exec -i shared-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 < deploy/postgres/role.sql
 # Set the database password outside Git, then install the private seed whose public key replaces
 # the EXTRACTOR placeholder in the host NATS authorization file (see "Bus identity" below):
 sudo install -m 0640 -o root -g ratatoskr-extractor /path/to/extractor.nkey \
