@@ -23,6 +23,8 @@ sudo install -m 0640 -o root -g ratatoskr-extractor \
   deploy/systemd/extractor.conf.example /etc/ratatoskr/extractor.conf
 sudo install -m 0644 deploy/systemd/ratatoskr-extractor.service /etc/systemd/system/
 sudo systemctl daemon-reload
+# The unit is WantedBy= and PartOf=ratatoskr.target, which ratatoskr-platform installs and enables
+# (its deploy/README.md). Without that target the unit starts now but not at boot.
 sudo systemctl enable --now ratatoskr-extractor
 ```
 
