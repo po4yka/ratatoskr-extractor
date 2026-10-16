@@ -11,8 +11,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "2c726027da79e0e899ad482afead0a2000b03e61" }
-ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "2c726027da79e0e899ad482afead0a2000b03e61" }
+ratatoskr-document-contracts = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "66bdb0c0545363f06137f13687084c21db9b27c5" }
+ratatoskr-identifiers = { git = "https://github.com/po4yka/ratatoskr-contracts.git", rev = "66bdb0c0545363f06137f13687084c21db9b27c5" }
 ratatoskr-extractor-document-ir = { path = "../crates/document-ir" }
 ratatoskr-extractor-pdf = { path = "../crates/pdf" }
 ratatoskr-extractor-url-routing = { path = "../crates/url-routing" }
